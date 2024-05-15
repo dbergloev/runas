@@ -1,0 +1,86 @@
+#!/bin/bash
+
+declare -a args
+declare type="--pty"
+declare user=0
+
+if [[ -z "$1" || "$1" != "--run0" ]]; then
+    # Add the `--run0` identifier for the polkit rule.
+    # It's the only way to pass an identifier to polkit.
+    #
+    # It's not a security thing as anyone can mimic this.
+    # It's just a way to add a rule to polkit that does not
+    # affect anything other than this script seen as 
+    # `org.freedesktop.systemd1.manage-units` is pretty broad.
+    #
+    exec "$0" --run0 "$@"
+fi
+
+###
+#
+#
+while true; do
+    if [[ "$1" == "--" || -z "$1" ]]; then
+        shift
+        break
+    
+    elif [[ "${1::1}" == "-" ]]; then
+        if [[ "${1:1:1}" != "-" ]]; then
+            for ((i=1; i<${#1}; i++)); do
+                case "${1:$i:1}" in
+                    's')
+                        type="--shell --scope"
+                    ;;
+                    
+                    'u')
+                        shift
+                        user=$(id -u "$1" 2>/dev/null)
+                        break
+                    ;;
+                    
+                    'h')
+                        echo "Usage: $(basename "$0") [-h] [-s] [-u <user>] [-- command ...]"; exit 0
+                    ;;
+                    
+                    *)
+                        echo "Unknown option -${1:$i:1}" >&2; exit 1
+                    ;;
+                esac
+            done
+            
+        elif [[ "$1" != "--run0" ]]; then
+            echo "Unknown option $1" >&2; exit 1
+        fi
+
+    else
+        break
+    fi
+    
+    shift
+done
+
+if [ -z "$user" ]; then
+    echo "Invalid user" >&2; exit 1
+
+elif [[ "$user" == "$(id -u)" ]]; then
+    if [[ " $type " =~ " --shell " ]]; then
+        if [ -n "$SHELL" ]; then
+            exec $SHELL
+        
+        else
+            exec sh
+        fi
+    
+    else
+        exec "$@"
+    fi
+
+elif [[ " $type " =~ " --scope " && "$(id -u)" != "0" ]]; then
+    # Scope can only be started by the same user or by root.
+    # So we must switch user before starting the scope
+    exec systemd-run --quiet --pty --uid root -- systemd-run --quiet $type -- "$@"
+
+else
+    exec systemd-run --quiet $type --uid $user -- "$@"
+fi
+
