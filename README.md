@@ -1,5 +1,7 @@
 # RunAs
 
+> For an actual implementaton of runas, see [implementation](implementation/README.md)
+
 Systemd is introducing `run0` in version `256` which according to themselves would be a replacement to things like `sudo` and `doas`. One of the key advantaged, according to their own [documentation](https://github.com/systemd/systemd/blob/v256-rc2/man/run0.xml), is that their implementation does not require `setuid` which would add more security _(More about why this is not true)_.
 
 Some people have gotten the wrong idea that this is a new tool, which is not the case. Systemd has a feature called `systemd-run` that allows you to run services, programs and more with a specified user id. The `run0` is simply a symlink to `systemd-run` which in turn adapts a few additional functionallity when used through the symlink, like being compatible with `sudo` arguments like `-u` _(More about why this is pointless)_. 
