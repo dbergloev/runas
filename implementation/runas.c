@@ -158,6 +158,13 @@ int main(int argc, char *argv[]) {
             case 'u':
                 if (parseuid(optarg, &uid) == false) {
                     errx(1, "Invalid user");
+                    
+                } else if (strcmp(run_argv[run_argc_args - 3], "--uid") != 0
+                      && strcmp(run_argv[run_argc_args - 2], "0") != 0) {
+                      
+                    /* This is an additional security check that makes sure 
+                       that there is no mistakes in 'run_argc_args' */
+                    errx(1, "Mismatch in argv");
                 }
 
                 run_argv[run_argc_args - 2] = optarg;
