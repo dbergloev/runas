@@ -171,10 +171,15 @@ auth_t authenticate(const uid_t target, const uint32_t flags) {
     }
     
     char *hash = crypt(passwd, pwd->sp_pwdp);
+    auth_t auth_status = AUTH_SUCCESS;
+    
     if (compare_pwd(hash, pwd->sp_pwdp) != 0) {
-        return AUTH_DENIED;
+        auth_status = AUTH_DENIED;
     }
     
-    return AUTH_SUCCESS;
+    // Zero out the password buffer
+    bzero(passwd, strlen(passwd));
+    
+    return auth_status;
 }
 
