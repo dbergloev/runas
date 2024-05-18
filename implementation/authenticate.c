@@ -8,8 +8,6 @@
 #include <unistd.h>
 #include <limits.h>
 #include <stdint.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <stdio.h>
 
 // Internal headers
@@ -125,42 +123,9 @@ auth_t authenticate(const uid_t target, const uint32_t flags) {
         
     } else if (isgrp(username, groupname) == false) {
         return AUTH_DENIED;
-    }
-    
-    if ((flags & F_AUTH_STDIN) == 0) {
-        if (read_passwd(passwd, MAX_PASSWORD_LENGTH) == false) {
-            return AUTH_FAILED;
-        }
         
-    } else {
-        ssize_t tc = 0, rc;
-        int len = MAX_PASSWORD_LENGTH;
-        int flags;
-        
-        if ((flags = fcntl(STDIN_FILENO, F_GETFL, 0)) == -1
-              || (fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK) == -1)) {
-        
-            return AUTH_FAILED;
-        }
-        
-        errno = 0;
-        while ((rc = read(STDIN_FILENO, &passwd[tc], len-1)) > 0) {
-            tc += rc;
-            len -= rc;
-        }
-
-        if (fcntl(STDIN_FILENO, F_SETFL, flags) == -1
-              || (rc == -1 && errno != EAGAIN)) {
-              
-            return AUTH_FAILED;
-        }
-        
-        if (passwd[tc - 1] == '\n') {
-            passwd[tc - 1] = '\0';
-        
-        } else {
-            passwd[tc] = '\0';
-        }
+    } else if (read_passwd(passwd, MAX_PASSWORD_LENGTH, flags) == false) {
+        return AUTH_FAILED;
     }
     
     struct spwd *pwd = getspnam(username);
