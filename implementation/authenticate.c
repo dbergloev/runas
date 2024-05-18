@@ -13,15 +13,13 @@
 #include <stdio.h>
 
 // Internal headers
+#include "common.h"
 #include "read_passwd.h"
 #include "authenticate.h"
 
 #ifndef RUNAS_PRIV_GROUP
 #define RUNAS_PRIV_GROUP "wheel"
 #endif
-
-const uint32_t AUTH_STDIN = 0x20;
-const uint32_t AUTH_PROMPT = 0x40;
 
 /**
  *
@@ -119,7 +117,7 @@ auth_t authenticate(const uid_t target, const uint32_t flags) {
     if (target == uid || uid == 0) {
         return AUTH_SUCCESS;
         
-    } else if ((flags & AUTH_PROMPT) == 0 && (flags & AUTH_STDIN) == 0) {
+    } else if ((flags & F_AUTH_PROMPT) == 0 && (flags & F_AUTH_STDIN) == 0) {
         return AUTH_DENIED;
         
     } else if (getuname(uid, username, MAX_USERNAME_LENGTH) == false) {
@@ -129,7 +127,7 @@ auth_t authenticate(const uid_t target, const uint32_t flags) {
         return AUTH_DENIED;
     }
     
-    if ((flags & AUTH_STDIN) == 0) {
+    if ((flags & F_AUTH_STDIN) == 0) {
         if (read_passwd(passwd, MAX_PASSWORD_LENGTH) == false) {
             return AUTH_FAILED;
         }

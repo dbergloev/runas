@@ -13,9 +13,8 @@
 
 // Internal headers
 #include "runas.h"
+#include "common.h"
 #include "authenticate.h"
-
-const uint32_t F_SHELL = 0x01;
 
 /**
  *
@@ -151,7 +150,7 @@ int main(int argc, char *argv[]) {
     static char *opt_grp = "--gid";
     int ch;
     uid_t uid = 0;
-    uint32_t flags = AUTH_PROMPT;
+    uint32_t flags = F_AUTH_PROMPT;
 
     while ((ch = getopt_long(argc, argv, "+u:g:shnvS", argv_options, '\0')) != -1) {
         switch (ch) {
@@ -186,11 +185,11 @@ int main(int argc, char *argv[]) {
                 break;
                 
             case 'S':
-                flags |= AUTH_STDIN;
+                flags |= F_AUTH_STDIN;
                 break;
                 
             case 'n':
-                flags &= ~AUTH_PROMPT;
+                flags &= ~F_AUTH_PROMPT;
                 break;
                 
             case 'h':
@@ -223,7 +222,7 @@ int main(int argc, char *argv[]) {
         if (argc > 0) {
             errx(1, "Not expecting arguments with the --shell option");
             
-        } else if ((flags & AUTH_STDIN) != 0) {
+        } else if ((flags & F_AUTH_STDIN) != 0) {
             errx(1, "The --stdin option is not allowed combined with the --shell option");
         }
         
@@ -247,7 +246,7 @@ int main(int argc, char *argv[]) {
     
     run_argv[run_argc] = '\0';
     
-    if (authenticate(uid, flags & ~F_SHELL) == AUTH_SUCCESS) {
+    if (authenticate(uid, flags) == AUTH_SUCCESS) {
         if (setuid(0) != 0) {
             errx(1, "Failed to set uid");
         }

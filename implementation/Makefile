@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -g
 LIBS = -lcrypt
 TARGET = runas
-SRCS = runas.c read_passwd.c authenticate.c
+SRCS = runas.c read_passwd.c authenticate.c common.c
 
 # Define build directory (modify if needed)
 BUILD_DIR = build
