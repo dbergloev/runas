@@ -3,12 +3,18 @@
 #include <grp.h>
 #include <stdbool.h>
 #include <string.h>
-#include <shadow.h>
-#include <crypt.h>
 #include <unistd.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
+
+#ifdef RUNAS_AUTH_PAM
+#include <security/pam_appl.h>
+#include <security/pam_misc.h>
+#else
+#include <shadow.h>
+#include <crypt.h>
+#endif
 
 // Internal headers
 #include "common.h"
@@ -62,6 +68,7 @@ static bool getuname(const uid_t uid, char *buffer, const size_t buffer_size) {
     return true;
 }
 
+#ifndef RUNAS_AUTH_PAM
 /**
  * Compare passwords with constant time
  */
@@ -102,12 +109,61 @@ static int compare_pwd(const char *usr, const char *pwd) {
 
     return result;  // Non-zero result indicates mismatch
 }
+#else
+int pam_auth_conv(int msg_len, const struct pam_message **msg,
+                struct pam_response **resp, void *flags) {
+                
+    struct pam_response *reply = '\0';
+    char passwd[MAX_PASSWORD_LENGTH];
+    
+    for (int i = 0; i < msg_len; i++) {
+        switch (msg[i]->msg_style) {
+            case PAM_PROMPT_ECHO_OFF:
+                if (read_passwd(passwd, MAX_PASSWORD_LENGTH, *((uint32_t *) flags)) == false) {
+                    return PAM_CONV_ERR;
+                }
+                
+                reply = (struct pam_response *) malloc(sizeof(struct pam_response));
+                if (!reply) {
+                    return PAM_CONV_ERR;
+                }
+                
+                reply->resp = strdup(passwd);
+                reply->resp_retcode = 0;
+                *resp = reply;
+                
+                // Zero out the password buffer
+                bzero(passwd, strlen(passwd));
+                
+                break;
+            
+            case PAM_ERROR_MSG:
+                fprintf(stdout, "%s\n", msg[i]->msg);
+                break;
+            
+            case PAM_TEXT_INFO:
+                fprintf(stderr, "%s\n", msg[i]->msg);
+                break;
+            
+            default:
+                if (*resp != (struct pam_response *) '\0') {
+                    bzero(reply->resp, strlen(reply->resp));
+                    free(reply->resp);
+                    free(reply);
+                }
+                
+                return PAM_CONV_ERR;
+        }
+    }
+    
+    return PAM_SUCCESS;
+}
+#endif
 
 /**
  *
  */
 auth_t authenticate(const uid_t target, const uint32_t flags) {
-    char passwd[MAX_PASSWORD_LENGTH];
     char username[MAX_USERNAME_LENGTH];
     char *groupname = RUNAS_PRIV_GROUP;
     uid_t uid = getuid();
@@ -123,8 +179,12 @@ auth_t authenticate(const uid_t target, const uint32_t flags) {
         
     } else if (isgrp(username, groupname) == false) {
         return AUTH_DENIED;
-        
-    } else if (read_passwd(passwd, MAX_PASSWORD_LENGTH, flags) == false) {
+    }
+    
+#ifndef RUNAS_AUTH_PAM
+    char passwd[MAX_PASSWORD_LENGTH];
+    
+    if (read_passwd(passwd, MAX_PASSWORD_LENGTH, flags) == false) {
         return AUTH_FAILED;
     }
     
@@ -144,5 +204,36 @@ auth_t authenticate(const uid_t target, const uint32_t flags) {
     bzero(passwd, strlen(passwd));
     
     return auth_status;
+#else
+    pam_handle_t *pamh = '\0';
+    int retval;
+    
+    struct pam_conv conv = {
+        pam_auth_conv,
+        (void *) &flags
+    };
+    
+    // Start PAM authentication
+    retval = pam_start("runas", username, &conv, &pamh);
+
+    if (retval == PAM_SUCCESS) {
+        // Authenticate the user
+        retval = pam_authenticate(pamh, 0);
+    }
+
+    if (retval == PAM_SUCCESS) {
+        // Check if the account is valid (not expired, etc.)
+        retval = pam_acct_mgmt(pamh, 0);
+    }
+
+    // End PAM transaction
+    pam_end(pamh, retval);
+
+    if (retval != PAM_SUCCESS) {
+        return AUTH_DENIED;
+    }
+    
+    return AUTH_SUCCESS;
+#endif
 }
 

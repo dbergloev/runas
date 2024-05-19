@@ -1,5 +1,7 @@
+RUNAS_VERSION = 0.1.2
+
 CC = gcc
-CFLAGS = -Wall -g
+CFLAGS += -Wall -g
 LIBS = -lcrypt
 TARGET = runas
 SRCS = runas.c read_passwd.c authenticate.c common.c
@@ -12,6 +14,14 @@ OBJS = $(SRCS:%.c=$(BUILD_DIR)/%.o)
 
 # Define install directory
 INSTALL_DIR = /usr/bin
+
+# Check if -DRUNAS_AUTH_PAM is in CFLAGS
+ifneq (,$(findstring -DRUNAS_AUTH_PAM,$(CFLAGS)))
+    LIBS += -lpam
+    RUNAS_VERSION := $(RUNAS_VERSION) PAM
+endif
+
+CFLAGS += -DRUNAS_VERSION=\""$(RUNAS_VERSION)"\"
 
 # Define all rule (builds the program)
 all: $(BUILD_DIR)/$(TARGET)
