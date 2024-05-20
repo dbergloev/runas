@@ -119,14 +119,18 @@ struct option argv_options[] = {
 };
 
 /**
- *
+ * WITHOUT_EXPAND_ENV will remove the --expand-environment option 
+ * which will then support systemd versions between 240 and 253.
+ * This option was first introduced in 254.
  */
 char *run_argv_args[] = {
     "systemd-run",
     "--quiet",
     "-G",
     "--send-sighup",
+#ifndef WITHOUT_EXPAND_ENV
     "--expand-environment=false",
+#endif
     "--uid", "0",  // MUST remain at the end
     '\0'
 };
