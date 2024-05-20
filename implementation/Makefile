@@ -50,5 +50,18 @@ uninstall:
 # Define clean rule (removes object files and binary from build folder)
 clean:
 	rm -f $(BUILD_DIR)/*.o
+	
+# Static build
+CRYPT_LIB_PATH := $(shell find /usr/lib/ /lib/ -name libcrypt.a 2>/dev/null | head -n 1)
 
-.PHONY: clean install uninstall
+check-crypt-path:
+	@if [ -z "$(CRYPT_LIB_PATH)" ]; then \
+	    echo "Error: libcrypt.a not found. Please ensure that the static library is available."; \
+	    exit 1; \
+	fi
+
+static: check-crypt-path $(BUILD_DIR)/$(TARGET)-static
+$(BUILD_DIR)/$(TARGET)-static: $(OBJS)
+	$(CC) $(CFLAGS) $^ -o $@ -Wl,-Bstatic $(CRYPT_LIB_PATH) -Wl,-Bdynamic $(filter-out -lcrypt, $(LIBS))
+
+.PHONY: clean install uninstall static
