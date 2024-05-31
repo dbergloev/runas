@@ -1,10 +1,12 @@
 # RunAs
 
-> For an actual implementaton of runas, see [implementation](implementation/README.md)
+> For the actual implementaton of runas, see [implementation](rust-impl/README.md)
+
+## Run0 and Systemd-run
 
 Systemd is introducing `run0` in version `256` which according to themselves would be a replacement to things like `sudo` and `doas`. One of the key advantaged, according to their own [documentation](https://github.com/systemd/systemd/blob/v256-rc2/man/run0.xml), is that their implementation does not require `setuid` which would add more security _(More about why this is not true)_.
 
-Some people have gotten the wrong idea that this is a new tool, which is not the case. Systemd has a feature called `systemd-run` that allows you to run services, programs and more with a specified user id. The `run0` is simply a symlink to `systemd-run` which in turn adapts a few additional functionallity when used through the symlink, like being compatible with `sudo` arguments like `-u` _(More about why this is pointless)_. 
+Some people have gotten the wrong idea that this is a new tool, which is not the case. Systemd has a feature called `systemd-run` that allows you to run services, programs and more with a specified user id. The run0 is simply a symlink to systemd-run which in turn adapts a few additional functionallity when used through the symlink, like being compatible with sudo arguments like `-u` _(More about why this is pointless)_. 
 
 On the surface this seams like a great idea. For one, systemd will launch processes run by `systemd-run` within it's own process hierarchy, meaning that you will get a clean process without reused environment variables and such while also having systemd manage and cleanup everything being run through this process. And all of this without the need for `setuid` _(Again, not true)_.
 
@@ -35,27 +37,4 @@ Polkit will most often use your Desktop UI to prompt for password. So unlike thi
 ### Sumary
 
 The "new" `run0` is a pointless and poorly tought out attempt to fix an issue, that in the end, it does not even try to fix. Instead it just introduces more issues and complexity to a task that should be simple to use.
-
-## This Repo
-
-In this repo are included the `runas` command. It's custom version of `run0` that deals with some of the issues arised and is much closer to `sudo` behaviour than `run0`. It's not meant to be used, seen as the whole idea of `run0` is stupid, and this script is more a proff of concept to show just how terrible systemd and polkit is to deal with this task, unless they actually implement a REAL solution into systemd rather than this pointless symlink.
-
-So let's go over some of the issues in this script that is more or less avoidable. 
-
- 1. Like with `run0` this does not fix the issue with `setuid`. 
- 2. In order to mimic `sudo` behavior, `runas -s` will launch `$SHELL` in a `--scope`. This in turn is not really possible with systemd if you are elivating the users privileges at the same time. So to make this work, a dual call to systemd is required, first to elivate the privileges and then to launch a `--scope` process with those privileges.
- 3. The `--scope` is only being applied to the `-s` option. This means that if you manually launch a shell with `runas bash` and then run `tmux`, it will fail if you detach and exists the shell.
- 4. If you are not elivating privileges, but instead try to run a program using the same uid as your active uid, then there is no call to systemd and the program is just executed directly, just like with `sudo`. But this also provides two different behaviours. One where you invoke systemd and start a process in the systemd process hierarchy and another behaviour where you start a process in the current process hierarchy. The only other solution would be to have a user authenticate even when they are trying to run something as themselves.
- 
-Some of the good things. 
-
- 1. Does not rely on version `256`. This can be used on any systemd version that supports `systemd-run`.
- 2. MUCH closer to real `sudo` behaviour than `run0`.
- 3. Can easily be symlinked from `/usr/bin/sudo` to `/usr/bin/runas`.
- 4. No stupid background collering.
- 5. Much better name.
- 
-## Conclusion
-
-`run0` will not replace `sudo`. Not until the developers of systemd actually makes an effort and does it right. 60% of these issues can be traced to `polkit`, but that is not an issue with polkit. It's an issue with tools using it for things that it was not meant or designed for. Also the remaining 40% is all systemd.
 
