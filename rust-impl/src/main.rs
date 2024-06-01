@@ -167,7 +167,7 @@ fn main() {
                 
                 OPT_ENV => {
                     let opt_value = matches.opt_str(opt.name).unwrap_or_else(|| {
-                        errx!(1, "User was not suplied");
+                        errx!(1, "Missing environment variable");
                     });
                     
                     run_argv.push(cstr!("--setenv"));
