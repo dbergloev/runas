@@ -88,7 +88,7 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
             let mut new_settings = settings.clone();
             term_flags = new_settings.local_flags;
             new_settings.local_flags &= !(LocalFlags::ICANON | LocalFlags::ECHO);
-            
+
             tcsetattr(input, SetArg::TCSANOW, &new_settings).unwrap_or_else(|e| { errx!(1, "ask_password: {}\n\t{}", MSG_IO_TTY_ATTR, e); });
         
         } else {
@@ -138,7 +138,11 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
         // Reset ECHO mode back to default settings
         if let Ok(settings) = tcgetattr(input) {
             let mut new_settings = settings.clone();
-            new_settings.local_flags ^= term_flags;
+            
+            // We cannot assign directly, so reset the flags and then append the old ones
+            new_settings.local_flags &= !(new_settings.local_flags);
+            new_settings.local_flags |= term_flags;
+
             tcsetattr(input, SetArg::TCSANOW, &new_settings).ok();
         }
         
