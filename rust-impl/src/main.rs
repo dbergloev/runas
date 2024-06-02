@@ -93,6 +93,7 @@ fn get_argv() -> Vec<std::ffi::CString> {
         cstr!("--quiet"),
         cstr!("-G"),
         cstr!("--send-sighup"),
+        cstr!("--same-dir"),
         #[cfg(not(feature = "without_expand_env"))]
         cstr!("--expand-environment=false")
     ];
