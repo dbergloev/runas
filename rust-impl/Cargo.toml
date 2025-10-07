@@ -17,3 +17,9 @@ atty = "0.2"
 without_expand_env = []     # cargo build --features without_expand_env
 use_pam = []                # RUSTFLAGS="-l pam" cargo build --features use_pam
 
+[profile.release]
+opt-level = 3
+debug = false
+lto = true
+codegen-units = 1
+strip = "symbols"
