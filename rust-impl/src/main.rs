@@ -122,16 +122,28 @@ fn get_argv_options() -> Options {
  * when the target user is resolved.
  */
 fn get_argv() -> Vec<std::ffi::CString> {
-    let argv = vec![
-        cstr!("systemd-run"),
-        cstr!("--uid"), cstr!(EMPTY), // MUST be in this order
-        cstr!("--quiet"),
-        cstr!("-G"),
-        cstr!("--send-sighup"),
-        cstr!("--same-dir"),
-        #[cfg(not(feature = "without_expand_env"))]
-        cstr!("--expand-environment=false")
-    ];
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "use_run0")] {
+            let argv = vec![
+                cstr!("run0"),
+                cstr!("--user"), cstr!(EMPTY),      // MUST be in this order
+                cstr!("--shell-prompt-prefix="),    // Remove the stupid SuperUser icon
+                cstr!("--background=")              // Remove the annoying red background
+            ];
+        
+        } else {
+            let argv = vec![
+                cstr!("systemd-run"),
+                cstr!("--uid"), cstr!(EMPTY), // MUST be in this order
+                cstr!("--quiet"),
+                cstr!("-G"),
+                cstr!("--send-sighup"),
+                cstr!("--same-dir"),
+                #[cfg(not(feature = "without_expand_env"))]
+                cstr!("--expand-environment=false")
+            ];
+        }
+    }
 
     return argv;
 }
@@ -193,7 +205,15 @@ fn main() {
                         errx!(1, "Group {} is not valid", cli_value);
                         
                     } else {
-                        run_argv.push(cstr!("--gid"));
+                        cfg_if::cfg_if! {
+                            if #[cfg(feature = "use_run0")] {
+                                run_argv.push(cstr!("--group"));
+                            
+                            } else {
+                                run_argv.push(cstr!("--gid"));
+                            }
+                        }
+
                         run_argv.push(cstr!(cli_value));
                     }
                 }
@@ -245,9 +265,13 @@ fn main() {
         } else if (flags & RunFlags::AUTH_STDIN) != RunFlags::NONE {
             errx!(1, "The --stdin option is not allowed combined with the --shell option");
         }
-        
-        run_argv.push(cstr!("--shell"));
-        run_argv.push(cstr!("--scope"));
+
+        cfg_if::cfg_if! {
+            if #[cfg(not(feature = "use_run0"))] {
+                run_argv.push(cstr!("--shell"));
+                run_argv.push(cstr!("--scope"));
+            }
+        }
     
     } else {
         if atty::is(Stream::Stdout) 
@@ -260,8 +284,13 @@ fn main() {
             run_argv.push(cstr!("--pipe"));
         }
         
-        run_argv.push(cstr!("--service-type=exec"));
-        run_argv.push(cstr!("--wait"));
+        cfg_if::cfg_if! {
+            if #[cfg(not(feature = "use_run0"))] {
+                run_argv.push(cstr!("--service-type=exec"));
+                run_argv.push(cstr!("--wait"));
+            }
+        }
+        
         run_argv.push(cstr!("--"));
     }
     

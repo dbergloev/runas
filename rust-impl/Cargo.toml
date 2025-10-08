@@ -12,8 +12,10 @@ libc = "0.2"
 nix = "0.26"
 bitflags = "2.5"
 atty = "0.2"
+cfg-if = "1"
 
 [features]
+use_run0 = []               # Use run0 instead of systemd-run directly
 without_expand_env = []     # cargo build --features without_expand_env
 use_pam = []                # RUSTFLAGS="-l pam" cargo build --features use_pam
 
