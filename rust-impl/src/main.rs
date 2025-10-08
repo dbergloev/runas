@@ -39,23 +39,23 @@ macro_rules! cstr {
  * A structure to store available options
  */
 #[derive(PartialEq, Eq)]
-struct Option {
+struct CliOption {
     flag: &'static str,
     name: &'static str,
     desc: &'static str,
     val:  &'static str
 }
 
-const OPT_USER    : Option  =  Option { flag: "u",   name: "user",            desc: "Run process as the specified user name or ID",      val: "USER"  };
-const OPT_GROUP   : Option  =  Option { flag: "g",   name: "group",           desc: "Run process as the specified group name or ID",     val: "GROUP" };
-const OPT_SHELL   : Option  =  Option { flag: "s",   name: "shell",           desc: "Run $SHELL as the target user",                     val: EMPTY   };
-const OPT_HELP    : Option  =  Option { flag: "h",   name: "help",            desc: "Display this help screen",                          val: EMPTY   };
-const OPT_NONINT  : Option  =  Option { flag: "n",   name: "non-interactive", desc: "Non-interactive mode, don't prompt for password",   val: EMPTY   };
-const OPT_STDIN   : Option  =  Option { flag: "S",   name: "stdin",           desc: "Read password from standard input",                 val: EMPTY   };
-const OPT_VERSION : Option  =  Option { flag: "v",   name: "version",         desc: "Display version information and exit",              val: EMPTY   };
-const OPT_ENV     : Option  =  Option { flag: EMPTY, name: "env",             desc: "Set environment variable",                          val: "ENV"   };
+const OPT_USER    : CliOption  =  CliOption { flag: "u",   name: "user",            desc: "Run process as the specified user name or ID",      val: "USER"  };
+const OPT_GROUP   : CliOption  =  CliOption { flag: "g",   name: "group",           desc: "Run process as the specified group name or ID",     val: "GROUP" };
+const OPT_SHELL   : CliOption  =  CliOption { flag: "s",   name: "shell",           desc: "Run $SHELL as the target user",                     val: EMPTY   };
+const OPT_HELP    : CliOption  =  CliOption { flag: "h",   name: "help",            desc: "Display this help screen",                          val: EMPTY   };
+const OPT_NONINT  : CliOption  =  CliOption { flag: "n",   name: "non-interactive", desc: "Non-interactive mode, don't prompt for password",   val: EMPTY   };
+const OPT_STDIN   : CliOption  =  CliOption { flag: "S",   name: "stdin",           desc: "Read password from standard input",                 val: EMPTY   };
+const OPT_VERSION : CliOption  =  CliOption { flag: "v",   name: "version",         desc: "Display version information and exit",              val: EMPTY   };
+const OPT_ENV     : CliOption  =  CliOption { flag: EMPTY, name: "env",             desc: "Set environment variable",                          val: "ENV"   };
 
-const OPTS: [Option; 8] = [OPT_USER, OPT_GROUP, OPT_SHELL, OPT_HELP, OPT_NONINT, OPT_STDIN, OPT_VERSION, OPT_ENV];
+const ARGV_SCHEME: &[CliOption] = &[OPT_USER, OPT_GROUP, OPT_SHELL, OPT_HELP, OPT_NONINT, OPT_STDIN, OPT_VERSION, OPT_ENV];
 
 /**
  *
@@ -71,12 +71,12 @@ fn print_usage(program: &str, opts: Options) {
 fn get_argv_options() -> Options {
     let mut opts = Options::new();
     
-    for opt in OPTS {
-        if opt.val == EMPTY {
-            opts.optflag(opt.flag, opt.name, opt.desc);
+    for cli_opt in ARGV_SCHEME {
+        if cli_opt.val == EMPTY {
+            opts.optflag(cli_opt.flag, cli_opt.name, cli_opt.desc);
         
         } else {
-            opts.optopt(opt.flag, opt.name, opt.desc, opt.val);
+            opts.optopt(cli_opt.flag, cli_opt.name, cli_opt.desc, cli_opt.val);
         }
     }
     
@@ -120,39 +120,39 @@ fn main() {
         }
     };
     
-    for opt in OPTS {
-        if matches.opt_present(opt.name) {
-            match opt {
+    for cli_opt in ARGV_SCHEME {
+        if matches.opt_present(cli_opt.name) {
+            match *cli_opt {
                 OPT_HELP => {
                     print_usage(&argv[0], opts);
                     return;
                 }
             
                 OPT_USER => {
-                    let opt_value = matches.opt_str(opt.name).unwrap_or_else(|| {
+                    let cli_value = matches.opt_str(cli_opt.name).unwrap_or_else(|| {
                         errx!(1, "User was not suplied");
                     });
                     
-                    accnt_obj = Account::from(&opt_value);
+                    accnt_obj = Account::from(&cli_value);
                     
                     if accnt_obj.is_none() {
-                        errx!(1, "User {} is not valid", opt_value);
+                        errx!(1, "User {} is not valid", cli_value);
                     }
                 }
                 
                 OPT_GROUP => {
-                    let opt_value = matches.opt_str(opt.name).unwrap_or_else(|| {
+                    let cli_value = matches.opt_str(cli_opt.name).unwrap_or_else(|| {
                         errx!(1, "Group was not suplied");
                     });
                     
-                    group_obj = Group::from(&opt_value);
+                    group_obj = Group::from(&cli_value);
                     
                     if group_obj.is_none() {
-                        errx!(1, "Group {} is not valid", opt_value);
+                        errx!(1, "Group {} is not valid", cli_value);
                         
                     } else {
                         run_argv.push(cstr!("--gid"));
-                        run_argv.push(cstr!(opt_value));
+                        run_argv.push(cstr!(cli_value));
                     }
                 }
                 
@@ -167,12 +167,12 @@ fn main() {
                 }
                 
                 OPT_ENV => {
-                    let opt_value = matches.opt_str(opt.name).unwrap_or_else(|| {
+                    let cli_value = matches.opt_str(cli_opt.name).unwrap_or_else(|| {
                         errx!(1, "Missing environment variable");
                     });
                     
                     run_argv.push(cstr!("--setenv"));
-                    run_argv.push(cstr!(opt_value));
+                    run_argv.push(cstr!(cli_value));
                 }
                 
                 OPT_SHELL => flags |= RunFlags::SHELL,
