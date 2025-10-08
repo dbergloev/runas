@@ -18,6 +18,19 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE.
 
+/**
+ * Terminal and password handling utilities for `runas`.
+ *
+ * This module provides two core features:
+ * 
+ *  1. **Constant-time string comparison** (`time_compare`) — used to safely
+ *     compare user-supplied credentials against stored values without leaking
+ *     timing information.
+ *  2. **Secure password input** (`ask_password`) — prompts the user for a password
+ *     through a terminal or standard input while disabling echo, restoring state
+ *     afterward.
+ */
+
 use super::shared::*;
 use nix::libc::{STDIN_FILENO, STDERR_FILENO};
 use std::os::unix::io::RawFd;
@@ -29,9 +42,15 @@ use nix::unistd::{read, write};
 /**
  * Compare two strings in constant time.
  *
- * This method does not return on the first mismatch. 
- * It will perform the operation in constant time and it
- * will compare the strings byte for byte.
+ * This function ensures consistent runtime regardless of input similarity
+ * or mismatch position, mitigating timing side-channel attacks.
+ *
+ * - Compares byte-by-byte without early exit.
+ * - Performs XOR over both byte arrays.
+ * - Pads comparisons with inverted bytes if the second string is shorter,
+ *   to avoid leaking password length through timing.
+ *
+ * Returns `true` if both strings are identical, `false` otherwise.
  */
 pub fn time_compare(str1: &str, str2: &str) -> bool {
     let buff1 = str1.as_bytes();
@@ -65,7 +84,23 @@ pub fn time_compare(str1: &str, str2: &str) -> bool {
 }
 
 /**
+ * Prompt the user for a password securely.
  *
+ * Displays a message on the terminal or reads from
+ * standard input if `RunFlags::AUTH_STDIN` is set.
+ *
+ * - Disables terminal echo and canonical mode while reading input.
+ * - Supports backspace and overwriting behavior.
+ * - Restores terminal flags to their previous state on exit.
+ * - Returns the collected password as a UTF-8 `String`.
+ *
+ * # Parameters
+ * - `msg`: Prompt message displayed to the user.
+ * - `flags`: Behavior control flags (`RunFlags::AUTH_STDIN`, etc.).
+ *
+ * # Returns
+ * The password input as a `String`. On fatal I/O or UTF-8 conversion errors,
+ * the process terminates via `errx!()`.
  */
 pub fn ask_password(msg: &str, flags: RunFlags) -> String {
     let mut input: RawFd = STDIN_FILENO;

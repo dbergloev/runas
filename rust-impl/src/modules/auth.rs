@@ -18,6 +18,25 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE.
 
+/**
+ * Unified authentication interface for `runas`.
+ *
+ * This module provides a single authentication entry point that selects between
+ * two backends:
+ *
+ *  - **PAM-based authentication** (`--features use_pam`):  
+ *    Uses the system’s Pluggable Authentication Module (PAM) stack to verify
+ *    credentials and perform account management checks.
+ *
+ *  - **Shadow-file authentication** (default, no PAM):  
+ *    Directly reads `/etc/shadow`, retrieves the stored password hash via
+ *    `getspnam()`, and verifies it using `crypt()`.
+ *
+ * The top-level `authenticate()` function is responsible for determining whether
+ * authentication is required, selecting the appropriate backend, and enforcing
+ * privilege and membership checks.
+ */
+
 use super::shared::*;
 use super::user::Account;
 
@@ -63,7 +82,10 @@ mod feat {
     }
     
     /**
+     * PAM-based authentication backend.
      *
+     * Uses the system PAM stack to authenticate a user interactively
+     * through a conversation handler.
      */
     pub fn auth(user: &Account, flags: RunFlags) -> bool {
         let mut conv = Conv {flags};
@@ -101,7 +123,7 @@ mod feat {
     use crate::modules::shadow_ffi::{crypt, getspnam};
 
     /**
-     *
+     * Shadow-file authentication backend.
      */
     pub fn auth(user: &Account, flags: RunFlags) -> bool {
         if let Some(hash) = getspnam(user.name()) {
@@ -120,7 +142,13 @@ mod feat {
 }
 
 /**
+ * Authenticate a user against a target account.
  *
+ * @param user     The invoking account
+ * @param target   The target account being accessed
+ * @param flags    Runtime authentication flags
+ *
+ * @return `true` if authentication succeeds or is not required, `false` otherwise.
  */
 pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> bool {
     if user.uid() == 0 || (target.uid() == user.uid()

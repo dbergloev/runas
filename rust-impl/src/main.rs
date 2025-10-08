@@ -18,6 +18,31 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE.
 
+/**
+ * runas — A systemd-integrated privilege and user switching utility.
+ *
+ * This program is a secure, minimal replacement for classic `sudo`-style tools.
+ * It performs user authentication and delegates the final process execution to
+ * `systemd-run`, taking advantage of systemd’s service supervision, cgroup isolation,
+ * and clean environment handling. 
+ *
+ * Unlike traditional privilege tools, `runas` does not execute processes directly.
+ * After verifying authentication (via PAM or a custom backend), it constructs a
+ * complete `systemd-run` command line and replaces itself with that process
+ * using `execvp()`. This makes `runas` stateless after delegation, and ensures
+ * that all executed commands are systemd-managed.
+ *
+ * The binary must run setuid-root, like `sudo`, since it temporarily raises privileges
+ * to change UID before delegating to `systemd-run`. It does **not** maintain any root
+ * privileges after exec; the invoked process is fully isolated in its own transient
+ * systemd service.
+ *
+ * ### Command Flow
+ * ```
+ * runas  →  authenticate()  →  build argv  →  execvp("systemd-run", ...)
+ * ```
+ */
+
 #[macro_use]
 extern crate runas;
 
@@ -29,6 +54,12 @@ use getopts::Options;
 use atty::Stream;
 use std::env;
 
+/**
+ * Creates a `CString` from a Rust string literal or value, terminating the program on error.
+ *
+ * This macro safely converts a Rust `&str` or `String` into a null-terminated
+ * `CString` suitable for C FFI calls (e.g., `execvp()` arguments).  
+ */
 macro_rules! cstr {
     ($str:expr) => {
         std::ffi::CString::new($str).unwrap_or_else(|_e| { errx!(1, "argv: {}", MSG_PARSE_CSTRING); })
@@ -58,7 +89,7 @@ const OPT_ENV     : CliOption  =  CliOption { flag: EMPTY, name: "env",         
 const ARGV_SCHEME: &[CliOption] = &[OPT_USER, OPT_GROUP, OPT_SHELL, OPT_HELP, OPT_NONINT, OPT_STDIN, OPT_VERSION, OPT_ENV];
 
 /**
- *
+ * Prints the usage/help text based on the current command-line schema.
  */
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options] -- CMD", program);
@@ -66,7 +97,8 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 /**
- *
+ * Build and return a configured `getopts::Options` parser
+ * matching the static argument schema in `ARGV_SCHEME`.
  */
 fn get_argv_options() -> Options {
     let mut opts = Options::new();
@@ -83,8 +115,11 @@ fn get_argv_options() -> Options {
     return opts;
 }
 
+
 /**
- *
+ * Constructs the initial `systemd-run` argument vector.
+ * The UID placeholder (index 2) is later replaced dynamically
+ * when the target user is resolved.
  */
 fn get_argv() -> Vec<std::ffi::CString> {
     let argv = vec![
@@ -102,7 +137,14 @@ fn get_argv() -> Vec<std::ffi::CString> {
 }
 
 /**
+ * Program entry point.
  *
+ * 1. Parses command line arguments
+ * 2. Authenticates user credentials
+ * 3. Builds `systemd-run` command argv
+ * 4. Executes it with appropriate privileges
+ *
+ * Exits immediately on error via `errx!()`.
  */
 fn main() {
     let argv: Vec<String> = env::args().collect();

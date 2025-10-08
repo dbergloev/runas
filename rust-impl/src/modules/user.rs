@@ -18,6 +18,22 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE.
 
+/**
+ * User, Group, and Account abstractions for system identity management.
+ *
+ * This module provides safe Rust wrappers around POSIX user and group database
+ * access, integrating `libc` and `nix::unistd` to retrieve and verify account
+ * information. It defines three simple structs:
+ *
+ *  - `User`: represents a system user (name, UID, primary GID)
+ *  - `Group`: represents a system group (name, GID)
+ *  - `Account`: a composite of `User` and primary `Group`
+ *
+ * These structures are used throughout `runas` to represent both the invoking
+ * and target user identities during authentication and privilege switching.
+ * ```
+ */
+
 use super::shared::*;
 use std::ffi::CString;
 use nix::unistd::{
@@ -34,7 +50,7 @@ use libc::{
 };
 
 /**
- *
+ * Represents a system group, including name and numeric ID.
  */
 pub struct Group {
     pub(in self) gid: u32,
@@ -42,7 +58,7 @@ pub struct Group {
 }
 
 /**
- * 
+ * Represents a system user, including name, UID, and primary group ID.
  */
 pub struct User {
     pub(in self) uid: u32,
@@ -51,13 +67,16 @@ pub struct User {
 }
 
 /**
- *
+ * Represents a combined user and group account (primary identity).
  */
 pub struct Account {
     pub(in self) user: User,
     pub(in self) group: Group
 }
 
+/**
+ *
+ */
 impl User {
     /**
      * Return the user name
@@ -75,7 +94,12 @@ impl User {
     pub fn gid(&self) -> u32 { self.gid }
 
     /**
-     * Get an instance from a user name or ID
+     * Create a user from a name or UID string.
+     *
+     * Accepts either a username (e.g., `"bob"`) or a numeric UID (e.g., `"1000"`).
+     * Validates the entry against the system database and returns `Some(User)` if found.
+     *
+     * Aborts the process with `errx!()` if the system user database cannot be queried.
      */
     pub fn from(user: &str) -> Option<Self> {
         let uinfo: Option<C_User>;
@@ -105,6 +129,9 @@ impl User {
     }
 }
 
+/**
+ *
+ */
 impl Group {
     /**
      * Return the user name
@@ -117,7 +144,10 @@ impl Group {
     pub fn gid(&self) -> u32 { self.gid }
     
     /**
-     * Get an instance from a group name or ID
+     * Create a group from a name or GID string.
+     *
+     * Accepts either a group name or a numeric GID.
+     * Validates the entry against the system database and returns `Some(Group)` if found.
      */
     pub fn from(group: &str) -> Option<Self> {
         let ginfo: Option<C_Group>;
@@ -146,6 +176,9 @@ impl Group {
     }
 }
 
+/**
+ *
+ */
 impl Account {
     /**
      * Return the user name
@@ -195,7 +228,9 @@ impl Account {
     }
     
     /**
+     * Construct a new `Account` from a username or UID string.
      *
+     * Looks up both user and primary group entries and combines them into a full `Account`.
      */
     pub fn from(user: &str) -> Option<Self> {
         if let Some(user) = User::from(user) {
@@ -208,7 +243,10 @@ impl Account {
     }
     
     /**
-     * Check to see if the account is a member of a group
+     * Check whether this account is a member of the specified group.
+     *
+     * The `group` argument may be a name or numeric GID.
+     * Root (UID 0) is treated as a member of all groups.
      */
     pub fn is_member(&self, group: &str) -> bool {
         // Root belongs to everything

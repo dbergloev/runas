@@ -18,10 +18,31 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE. 
 
+/**
+ * PAM (Pluggable Authentication Module) bindings and wrappers for `runas`.
+ *
+ * This module implements minimal and memory-safe Rust bindings around
+ * the PAM (Pluggable Authentication Module) C API. 
+ * It allows `runas` to perform password-based authentication and account validation
+ * using system PAM policies, without directly linking against or maintaining its own
+ * C glue code elsewhere.
+ *
+ * All `unsafe` FFI operations are fully encapsulated inside this file.
+ * The public interface is designed to be safe for external use, provided
+ * it is used as intended. Rust’s safety guarantees cannot extend into the
+ * C library, but every call is validated and checked at the boundary.
+ */
+
 use super::shared::*;
 use std::ffi::{CString, CStr};
 use std::{mem, ptr};
 use libc::{c_int, c_void, size_t, free, calloc, strdup};
+
+// -------------------------
+// Raw C FFI declarations
+// -------------------------
+// The `c_ffi` module exposes unmodified libc-compatible bindings for libpam.
+// These are kept private to isolate `unsafe` usage and reduce public API surface.
 
 mod c_ffi {    
     #[allow(dead_code)]
@@ -103,8 +124,9 @@ pub const PAM_ABORT: i32 = 26;
 
 #[allow(non_camel_case_types)]
 #[derive(PartialEq)]
+
 /**
- * Defines the message types from PAM.
+ * Defines the message types emitted during PAM conversation callbacks.
  */
 pub enum CONV {
     ECHO_ON,
@@ -114,19 +136,26 @@ pub enum CONV {
 }
 
 /**
- * A PAM conversation implementation to be used with `pam_start()`.
+ * High-level conversation interface for PAM authentication.
+ *
+ * Implementations of this trait receive messages and prompts
+ * during authentication and respond accordingly.
  */
 pub trait PamConv {
     fn prompt(&mut self, msg: &str, style: CONV) -> Result<String, NULL>;
     fn msg(&mut self, msg: &str, style: CONV);
 }
 
+// -------------------------
+// Conversation bridge
+// -------------------------
+
 /**
- * Wrapper for PAM conversations. 
+ * FFI-compatible callback adapter between PAM and a Rust `PamConv` object.
  *
- * This function sits between PAM and `PamConv`.
- * It allows `PamConv` to be fully Rust without the need for 
- * `CString`, `unsafe {}` blocks and so on. 
+ * Called internally by PAM through the `pam_conv` structure.
+ * Performs string decoding, allocates a response array, and invokes the
+ * user-defined callback. Errors are mapped to PAM_CONV_ERR.
  */
 unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
         num_msg: c_int, 
@@ -206,8 +235,18 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
     return result as c_int;
 }
 
+// -------------------------
+// Wrapper functions
+// -------------------------
+
 /**
- * 
+ * Initialize a PAM session and return a handle on success.
+ *
+ * @param service       PAM service name (e.g., "login", "sudo", "runas").
+ * @param username      The target username to authenticate.
+ * @param conversation  The conversation handler implementing `PamConv`.
+ *
+ * @return PAM handle wrapped in `Result`, or error code on failure.
  */
 pub fn pam_start<'a, T: PamConv>(service: &str, username: &str, conversation: &mut T) -> Result<&'a mut pam_handle_t, i32> where {
     let mut handle: *mut pam_handle_t = std::ptr::null_mut();
@@ -232,7 +271,9 @@ pub fn pam_start<'a, T: PamConv>(service: &str, username: &str, conversation: &m
 }
 
 /**
- * 
+ * Authenticate a user associated with the given PAM handle.
+ *
+ * @return `Ok(NULL)` if successful, `Err(code)` otherwise.
  */
 pub fn pam_authenticate(handle: &mut pam_handle_t, flags: u32) -> Result<NULL, i32> {
     let result: i32;
@@ -249,7 +290,9 @@ pub fn pam_authenticate(handle: &mut pam_handle_t, flags: u32) -> Result<NULL, i
 }
 
 /**
- * 
+ * Perform PAM account management checks (e.g., expiration, validity).
+ *
+ * @return `Ok(NULL)` if account is valid, `Err(code)` otherwise.
  */
 pub fn pam_acct_mgmt(handle: &mut pam_handle_t, flags: u32) -> Result<NULL, i32> {
     let result: i32;
@@ -266,7 +309,7 @@ pub fn pam_acct_mgmt(handle: &mut pam_handle_t, flags: u32) -> Result<NULL, i32>
 }
 
 /**
- * 
+ * Terminate a PAM session and free associated resources.
  */
 pub fn pam_end(handle: &mut pam_handle_t, status: i32) -> Result<NULL, i32> {
     let result: i32;
