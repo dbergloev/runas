@@ -38,7 +38,10 @@
  */
 
 use super::shared::*;
-use super::user::Account;
+use super::user::{
+    Account,
+    Group
+};
 
 /*
  * We use a sub module in order to wrap the feature check in a block.
@@ -151,17 +154,46 @@ mod feat {
  * @return `true` if authentication succeeds or is not required, `false` otherwise.
  */
 pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> bool {
-    if user.uid() == 0 || (target.uid() == user.uid()
-                        && (target.gid() == user.gid() || user.is_member(&target.gid().to_string()))) {
+    /*
+     * The following will evaluate to true:
+     *  - The user is root (Can do whatever they want).
+     *  - The user is launching this as it's own UID and primary GID.
+     *  - The user is launching this as it's own UID and a GID that the UID is a member of.
+     *
+     * The following will require authentication:
+     *  - The user tries to switch UID away from it's own.              E.g. --uid
+     *  - The user tries to access a GID that it is not a member of.    E.g. --gid
+     */
+    if user.is_root() || (target.uid() == user.uid()
+                        && (target.gid() == user.gid() || user.is_member(target.group()))) {
                             
         return true;
         
     } else if (flags & RunFlags::AUTH_NO_PROMPT) != RunFlags::NONE 
             && (flags & RunFlags::AUTH_STDIN) == RunFlags::NONE {
             
+        /*
+         * Password prompt was requested disabled while 
+         * not requesting passing via stdin. 
+         *
+         * We just fail, beause auth() will launch a prompt if stdin is disabled, 
+         * and caller did not want a prompt. 
+         */
         return false;
         
-    } else if !user.is_member(AUTH_GROUP) {
+    } else if let Some(wheel) = Group::from(AUTH_GROUP) {
+        /*
+         * We only allow the wheel group to reach outside their
+         * own UID and GID's. 
+         */
+        if !user.is_member(&wheel) {
+            return false;
+        }
+            
+    } else {
+        /*
+         * Default to false.
+         */
         return false;
     }
 

@@ -36,6 +36,12 @@
 
 use super::shared::*;
 use std::ffi::CString;
+
+use std::cell::{
+    RefCell,
+    Ref
+};
+
 use nix::unistd::{
     User as C_User, 
     Group as C_Group,
@@ -43,8 +49,8 @@ use nix::unistd::{
     Gid as C_Gid,
     getuid
 };
+
 use libc::{
-    c_int, 
     gid_t,
     getgrouplist
 };
@@ -53,7 +59,7 @@ use libc::{
  * Represents a system group, including name and numeric ID.
  */
 pub struct Group {
-    pub(in self) gid: u32,
+    pub(in self) gid: C_Gid,
     pub(in self) name: String
 }
 
@@ -61,9 +67,11 @@ pub struct Group {
  * Represents a system user, including name, UID, and primary group ID.
  */
 pub struct User {
-    pub(in self) uid: u32,
-    pub(in self) gid: u32,
-    pub(in self) name: String
+    pub(in self) uid: C_Uid,
+    pub(in self) gid: C_Gid,
+    pub(in self) name: String,
+    pub(in self) home: String,
+    pub(in self) shell: String,
 }
 
 /**
@@ -71,13 +79,29 @@ pub struct User {
  */
 pub struct Account {
     pub(in self) user: User,
-    pub(in self) group: Group
+    pub(in self) group: Group,
+    pub(in self) group_list: RefCell<Option<Vec<C_Gid>>>
 }
 
 /**
  *
  */
 impl User {
+    /**
+     *
+     */
+    pub fn is_root(&self) -> bool { self.uid.is_root() }
+
+    /**
+     * Return the user shell
+     */
+    pub fn shell(&self) -> &str { &self.shell }
+
+    /**
+     * Return the user home dir
+     */
+    pub fn home(&self) -> &str { &self.home }
+
     /**
      * Return the user name
      */
@@ -86,12 +110,12 @@ impl User {
     /**
      * Return the user ID
      */
-    pub fn uid(&self) -> u32 { self.uid }
+    pub fn uid(&self) -> C_Uid { self.uid }
     
     /**
      * Return the user primary group ID
      */
-    pub fn gid(&self) -> u32 { self.gid }
+    pub fn gid(&self) -> C_Gid { self.gid }
 
     /**
      * Create a user from a name or UID string.
@@ -117,12 +141,20 @@ impl User {
         
         if let Some(uinfo) = uinfo {
             return Some( 
-                        User { 
-                            gid: uinfo.gid.as_raw(),
-                            uid: uinfo.uid.as_raw(),
-                            name: uinfo.name 
-                        } 
-                   );
+                User {
+                    gid: uinfo.gid,
+                    uid: uinfo.uid,
+                    name: uinfo.name,
+                    
+                    home: uinfo.dir.into_os_string()
+                                    .into_string()
+                                    .unwrap_or_else(|_e| { errx!(1, "Invalid UTF-8 in user home path"); }),
+                                    
+                    shell: uinfo.shell.into_os_string()
+                                    .into_string()
+                                    .unwrap_or_else(|_e| { errx!(1, "Invalid UTF-8 in user home path"); })
+                } 
+           );
         }
         
         None
@@ -141,7 +173,7 @@ impl Group {
     /**
      * Return the user primary group ID
      */
-    pub fn gid(&self) -> u32 { self.gid }
+    pub fn gid(&self) -> C_Gid { self.gid }
     
     /**
      * Create a group from a name or GID string.
@@ -165,11 +197,11 @@ impl Group {
         
         if let Some(ginfo) = ginfo {
             return Some( 
-                        Group { 
-                            gid: ginfo.gid.as_raw(),
-                            name: ginfo.name 
-                        } 
-                   );
+                Group { 
+                    gid: ginfo.gid,
+                    name: ginfo.name 
+                } 
+           );
         }
         
         None
@@ -181,6 +213,21 @@ impl Group {
  */
 impl Account {
     /**
+     *
+     */
+    pub fn is_root(&self) -> bool { self.user.uid.is_root() }
+
+    /**
+     * Return the user shell
+     */
+    pub fn shell(&self) -> &str { &self.user.shell }
+
+    /**
+     * Return the user home dir
+     */
+    pub fn home(&self) -> &str { &self.user.home }
+
+    /**
      * Return the user name
      */
     pub fn name(&self) -> &str { &self.user.name }
@@ -188,12 +235,12 @@ impl Account {
     /**
      * Return the user ID
      */
-    pub fn uid(&self) -> u32 { self.user.uid }
+    pub fn uid(&self) -> C_Uid { self.user.uid }
     
     /**
      * Return the user group ID
      */
-    pub fn gid(&self) -> u32 { self.group.gid }
+    pub fn gid(&self) -> C_Gid { self.group.gid }
 
     /**
      * Return the user object
@@ -235,7 +282,13 @@ impl Account {
     pub fn from(user: &str) -> Option<Self> {
         if let Some(user) = User::from(user) {
             if let Some(group) = Group::from(&user.gid.to_string()) { 
-                return Some(Account {user, group});
+                return Some(
+                    Account {
+                        user: user, 
+                        group: group, 
+                        group_list: RefCell::new(None)
+                    }
+                );
             }
         }
         
@@ -243,70 +296,66 @@ impl Account {
     }
     
     /**
-     * Check whether this account is a member of the specified group.
-     *
-     * The `group` argument may be a name or numeric GID.
-     * Root (UID 0) is treated as a member of all groups.
+     * Get a list of all Gid's that this account is a member of.
      */
-    pub fn is_member(&self, group: &str) -> bool {
+    pub fn group_list(&self) -> Ref<'_, Vec<C_Gid>> {
+        if self.group_list.borrow().is_none() {
+            let     username     = CString::new(&*self.user.name).unwrap_or_else(|_e| { errx!(1, MSG_PARSE_CSTRING); });
+            let     gid:     u32 = self.user.gid.as_raw();
+            let mut ngroups: i32 = 0;
+            
+            // First call: get required number of groups
+            unsafe {
+                getgrouplist(
+                    username.as_ptr(),
+                    gid,
+                    std::ptr::null_mut(),
+                    &mut ngroups,
+                );
+            }
+            
+            // Allocate enough space for the groups
+            let mut raw_gids = Vec::<gid_t>::with_capacity(ngroups as usize);
+
+            // Second call: actually fill the vector
+            unsafe {
+                getgrouplist(
+                    username.as_ptr(),
+                    gid,
+                    raw_gids.as_mut_ptr(),
+                    &mut ngroups,
+                );
+                
+                raw_gids.set_len(ngroups as usize);
+            }
+            
+            // Convert to proper Gid type
+            let mut groups: Vec<C_Gid> = Vec::with_capacity(raw_gids.len());
+            
+            for gid in &raw_gids {
+                groups.push(C_Gid::from_raw(*gid));
+            }
+            
+            *self.group_list.borrow_mut() = Some(groups);
+        }
+        
+        Ref::map(self.group_list.borrow(), |opt| opt.as_ref().unwrap())
+    }
+    
+    /**
+     * Check whether this account is a member of the specified group.
+     */
+    pub fn is_member(&self, group: &Group) -> bool {
         // Root belongs to everything
-        if self.user.uid == 0 {
+        if self.user.uid.is_root() {
             return true;
         }
         
-        // Initialize the group list
-        let groups_len: usize = 32;
-        let mut groups = vec![0 as gid_t; groups_len];
+        let list: Ref<'_, Vec<C_Gid>> = self.group_list();
         
-        // Convert some values into C types
-        let c_username = CString::new(&*self.user.name).unwrap_or_else(|_e| { errx!(1, MSG_PARSE_CSTRING); });
-        let mut c_len = groups_len as c_int;
-        
-        for i in 0..2 {
-            // Extract groups into the vector
-            let ret = unsafe {
-                getgrouplist(
-                    c_username.as_ptr(),
-                    self.group.gid as gid_t,
-                    groups.as_mut_ptr(),
-                    &mut c_len,
-                )
-            } as i32;
-            
-            if ret == -1 {
-                if i == 0 {
-                    // If the buffer was too small, resize and try again
-                    groups.resize(2 * groups_len, 0 as gid_t);
-                    continue;
-                }
-                
-                errx!(1, MSG_IO_USER_DB);
-            }
-            
-            break;
-        }
-        
-        // Let's see if we can find the group we require
-        if group.chars().all(char::is_numeric) {
-            let parsed_gid = group.parse::<u32>().unwrap_or_else(|_e| { errx!(1, MSG_PARSE_NUM); });
-            
-            for gid in groups {
-                if gid == parsed_gid {
-                    return true;
-                }
-            }
-        
-        } else {
-            for gid in groups {
-                let c_gid = C_Gid::from_raw(gid);
-            
-                if let Ok(gopt) = C_Group::from_gid(c_gid) {
-                    if let Some(gname) = gopt {
-                        if gname.name == group {
-                            return true;
-                        }
-                    }
-                }
+        for gid in &*list {
+            if *gid == group.gid() {
+                return true;
             }
         }
         
