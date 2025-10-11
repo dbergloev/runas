@@ -48,9 +48,7 @@ extern crate runas;
 
 use runas::modules::auth::authenticate;
 use runas::modules::shared::*;
-use std::os::unix::ffi::OsStrExt;
 use std::env;
-use std::path::PathBuf;
 use std::ffi::CString;
 use atty::Stream;
 
@@ -69,6 +67,13 @@ use getopts::{
     Options,
     Matches
 };
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "use_run0")] {
+        use std::os::unix::ffi::OsStrExt;
+        use std::path::PathBuf;
+    }
+}
 
 /**
  * Creates a `CString` from a Rust string literal or value, terminating the program on error.
