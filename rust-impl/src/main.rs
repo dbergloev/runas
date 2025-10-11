@@ -46,13 +46,27 @@
 #[macro_use]
 extern crate runas;
 
-use runas::modules::shared::*;
-use runas::modules::user::{Group, Account};
 use runas::modules::auth::authenticate;
-use nix::unistd::{execvp, setuid, Uid};
-use getopts::Options;
-use atty::Stream;
+use runas::modules::shared::*;
 use std::env;
+use std::ffi::CString;
+use atty::Stream;
+
+use runas::modules::user::{
+    Group, 
+    Account
+};
+
+use nix::unistd::{
+    execvp, 
+    setuid, 
+    Uid
+};
+
+use getopts::{
+    Options,
+    Matches
+};
 
 /**
  * Creates a `CString` from a Rust string literal or value, terminating the program on error.
@@ -62,7 +76,9 @@ use std::env;
  */
 macro_rules! cstr {
     ($str:expr) => {
-        std::ffi::CString::new($str).unwrap_or_else(|_e| { errx!(1, "argv: {}", MSG_PARSE_CSTRING); })
+        CString::new($str).unwrap_or_else(|_e| { 
+            errx!(1, "argv: {}", MSG_PARSE_CSTRING); 
+        })
     };
 }
 
@@ -91,9 +107,9 @@ const ARGV_SCHEME: &[CliOption] = &[OPT_USER, OPT_GROUP, OPT_SHELL, OPT_HELP, OP
 /**
  * Prints the usage/help text based on the current command-line schema.
  */
-fn print_usage(program: &str, opts: Options) {
-    let brief = format!("Usage: {} [options] -- CMD", program);
-    print!("{}", opts.usage(&brief));
+fn print_usage(program: &str, argv_opt: &Options) {
+    let brief: String = format!("Usage: {} [options] -- CMD", program);
+    print!("{}", argv_opt.usage(&brief));
 }
 
 /**
@@ -101,18 +117,18 @@ fn print_usage(program: &str, opts: Options) {
  * matching the static argument schema in `ARGV_SCHEME`.
  */
 fn get_argv_options() -> Options {
-    let mut opts = Options::new();
+    let mut argv_opt = Options::new();
     
     for cli_opt in ARGV_SCHEME {
         if cli_opt.val == EMPTY {
-            opts.optflag(cli_opt.flag, cli_opt.name, cli_opt.desc);
+            argv_opt.optflag(cli_opt.flag, cli_opt.name, cli_opt.desc);
         
         } else {
-            opts.optopt(cli_opt.flag, cli_opt.name, cli_opt.desc, cli_opt.val);
+            argv_opt.optopt(cli_opt.flag, cli_opt.name, cli_opt.desc, cli_opt.val);
         }
     }
     
-    return opts;
+    return argv_opt;
 }
 
 
@@ -159,31 +175,31 @@ fn get_argv() -> Vec<std::ffi::CString> {
  * Exits immediately on error via `errx!()`.
  */
 fn main() {
-    let argv: Vec<String> = env::args().collect();
-    let mut run_argv = get_argv();
-    let opts = get_argv_options();
-    let mut flags = RunFlags::NONE;
-    let mut group_obj = None;
-    let mut accnt_obj = None;
+    let     argv_in:   Vec<String>      = env::args().collect();
+    let mut argv_out:  Vec<CString>     = get_argv();
+    let     argv_opt:  Options          = get_argv_options();
+    let mut flags:     RunFlags         = RunFlags::NONE;
+    let mut group_obj: Option<Group>    = None;
+    let mut accnt_obj: Option<Account>  = None;
     
-    let matches = match opts.parse(&argv[1..]) {
+    let argv_parsed: Matches = match argv_opt.parse(&argv_in[1..]) {
         Ok(m) => m,
         Err(e) => {
-            print_usage(&argv[0][..], opts);
+            print_usage(&*argv_in[0], &argv_opt);
             errx!(1, e);
         }
     };
     
     for cli_opt in ARGV_SCHEME {
-        if matches.opt_present(cli_opt.name) {
+        if argv_parsed.opt_present(cli_opt.name) {
             match *cli_opt {
                 OPT_HELP => {
-                    print_usage(&argv[0], opts);
+                    print_usage(&argv_in[0], &argv_opt);
                     return;
                 }
             
                 OPT_USER => {
-                    let cli_value = matches.opt_str(cli_opt.name).unwrap_or_else(|| {
+                    let cli_value: String = argv_parsed.opt_str(cli_opt.name).unwrap_or_else(|| {
                         errx!(1, "User was not suplied");
                     });
                     
@@ -195,7 +211,7 @@ fn main() {
                 }
                 
                 OPT_GROUP => {
-                    let cli_value = matches.opt_str(cli_opt.name).unwrap_or_else(|| {
+                    let cli_value: String = argv_parsed.opt_str(cli_opt.name).unwrap_or_else(|| {
                         errx!(1, "Group was not suplied");
                     });
                     
@@ -207,14 +223,14 @@ fn main() {
                     } else {
                         cfg_if::cfg_if! {
                             if #[cfg(feature = "use_run0")] {
-                                run_argv.push(cstr!("--group"));
+                                argv_out.push(cstr!("--group"));
                             
                             } else {
-                                run_argv.push(cstr!("--gid"));
+                                argv_out.push(cstr!("--gid"));
                             }
                         }
 
-                        run_argv.push(cstr!(cli_value));
+                        argv_out.push(cstr!(cli_value));
                     }
                 }
                 
@@ -229,12 +245,12 @@ fn main() {
                 }
                 
                 OPT_ENV => {
-                    let cli_value = matches.opt_str(cli_opt.name).unwrap_or_else(|| {
+                    let cli_value: String = argv_parsed.opt_str(cli_opt.name).unwrap_or_else(|| {
                         errx!(1, "Missing environment variable");
                     });
                     
-                    run_argv.push(cstr!("--setenv"));
-                    run_argv.push(cstr!(cli_value));
+                    argv_out.push(cstr!("--setenv"));
+                    argv_out.push(cstr!(cli_value));
                 }
                 
                 OPT_SHELL => flags |= RunFlags::SHELL,
@@ -247,9 +263,17 @@ fn main() {
     }
     
     // Create selected user account or set it to root if not set via argv
-    let user = Account::current().unwrap_or_else(|| { errx!(1, "Failed to initialize current user"); });
-    let mut target = if let Some(account) = accnt_obj { account } else {
-        Account::from("0").unwrap_or_else(|| { errx!(1, "Failed to initialize default user"); })
+    let user: Account = Account::current().unwrap_or_else(|| { 
+        errx!(1, "Failed to initialize current user"); 
+    });
+    
+    // Get declared target or assume root
+    let mut target: Account = if let Some(account) = accnt_obj { 
+        account 
+    } else {
+        Account::from("0").unwrap_or_else(|| { 
+            errx!(1, "Failed to initialize default user"); 
+        })
     };
     
     // If we have a different gid in argv, update the group
@@ -259,7 +283,7 @@ fn main() {
     
     // Do some last systemd-run configuration
     if (flags & RunFlags::SHELL) != RunFlags::NONE {
-        if matches.free.len() > 0 {
+        if argv_parsed.free.len() > 0 {
             errx!(1, "Not expecting arguments with the --shell option");
             
         } else if (flags & RunFlags::AUTH_STDIN) != RunFlags::NONE {
@@ -268,8 +292,8 @@ fn main() {
 
         cfg_if::cfg_if! {
             if #[cfg(not(feature = "use_run0"))] {
-                run_argv.push(cstr!("--shell"));
-                run_argv.push(cstr!("--scope"));
+                argv_out.push(cstr!("--shell"));
+                argv_out.push(cstr!("--scope"));
             }
         }
     
@@ -278,28 +302,28 @@ fn main() {
                 && atty::is(Stream::Stderr) 
                 && atty::is(Stream::Stdin) {
         
-            run_argv.push(cstr!("--pty"));
+            argv_out.push(cstr!("--pty"));
             
         } else {
-            run_argv.push(cstr!("--pipe"));
+            argv_out.push(cstr!("--pipe"));
         }
         
         cfg_if::cfg_if! {
             if #[cfg(not(feature = "use_run0"))] {
-                run_argv.push(cstr!("--service-type=exec"));
-                run_argv.push(cstr!("--wait"));
+                argv_out.push(cstr!("--service-type=exec"));
+                argv_out.push(cstr!("--wait"));
             }
         }
         
-        run_argv.push(cstr!("--"));
+        argv_out.push(cstr!("--"));
     }
     
     // Set the uid that systemd-run should use
-    run_argv[2] = cstr!(target.uid().to_string());
+    argv_out[2] = cstr!(target.uid().to_string());
     
     // Copy all of the argv that systemd-run should execute
-    for opt in matches.free {
-        run_argv.push(cstr!(opt));
+    for opt in argv_parsed.free {
+        argv_out.push(cstr!(opt));
     }
     
     // Authenticate the current user, the target user and spawn systemd
@@ -309,7 +333,7 @@ fn main() {
             errx!(1, "Failed to set uid");
         }
     
-        execvp(&run_argv[0], &run_argv).expect("Failed to spawn process");
+        execvp(&argv_out[0], &argv_out).expect("Failed to spawn process");
         
         // We should never reach this point
     }

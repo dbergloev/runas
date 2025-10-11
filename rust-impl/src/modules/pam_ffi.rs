@@ -34,9 +34,25 @@
  */
 
 use super::shared::*;
-use std::ffi::{CString, CStr};
-use std::{mem, ptr};
-use libc::{c_int, c_void, size_t, free, calloc, strdup};
+
+use std::ffi::{
+    CString, 
+    CStr
+};
+    
+use std::{
+    mem, 
+    ptr
+};
+    
+use libc::{
+    c_int, 
+    c_void, 
+    size_t, 
+    free, 
+    calloc, 
+    strdup
+};
 
 // -------------------------
 // Raw C FFI declarations
@@ -45,6 +61,13 @@ use libc::{c_int, c_void, size_t, free, calloc, strdup};
 // These are kept private to isolate `unsafe` usage and reduce public API surface.
 
 mod c_ffi {    
+
+    use libc::{
+        c_int, 
+        c_char, 
+        c_void
+    };
+
     #[allow(dead_code)]
     pub const PAM_PROMPT_ECHO_OFF: i32 = 1;
     #[allow(dead_code)]
@@ -54,19 +77,17 @@ mod c_ffi {
     #[allow(dead_code)]
     pub const PAM_TEXT_INFO: i32 = 4;
     
-    use libc::{c_int, c_char, c_void};
-    
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct pam_message {
         pub msg_style: c_int,
-        pub msg: *const c_char,
+        pub msg:       *const c_char,
     }
 
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct pam_response {
-        pub resp: *mut c_char,
+        pub resp:         *mut c_char,
         pub resp_retcode: c_int,
     }
 
@@ -74,9 +95,9 @@ mod c_ffi {
     #[derive(Copy, Clone)]
     pub struct pam_conv {
         pub conv: unsafe extern "C" fn(
-            num_msg: c_int,
-            msg: *const *const pam_message,
-            resp: *mut *mut pam_response,
+            num_msg:     c_int,
+            msg:         *const *const pam_message,
+            resp:        *mut *mut pam_response,
             appdata_ptr: *mut c_void,
         ) -> c_int,
         pub appdata_ptr: *mut c_void,
@@ -122,12 +143,11 @@ pub const PAM_CONV_ERR: i32 = 19;
 #[allow(dead_code)]
 pub const PAM_ABORT: i32 = 26;
 
-#[allow(non_camel_case_types)]
-#[derive(PartialEq)]
-
 /**
  * Defines the message types emitted during PAM conversation callbacks.
  */
+#[allow(non_camel_case_types)]
+#[derive(PartialEq)]
 pub enum CONV {
     ECHO_ON,
     ECHO_OFF,
@@ -250,9 +270,9 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
  */
 pub fn pam_start<'a, T: PamConv>(service: &str, username: &str, conversation: &mut T) -> Result<&'a mut pam_handle_t, i32> where {
     let mut handle: *mut pam_handle_t = std::ptr::null_mut();
-    let c_service = CString::new(service).unwrap_or_else(|e| { errx!(1, "pam_start: {}\n\t{}", MSG_PARSE_CSTRING, e); });
-    let c_username = CString::new(username).unwrap_or_else(|e| { errx!(1, "pam_start: {}\n\t{}", MSG_PARSE_CSTRING, e); });
-    let result: i32;
+    let     c_service                 = CString::new(service).unwrap_or_else(|e| { errx!(1, "pam_start: {}\n\t{}", MSG_PARSE_CSTRING, e); });
+    let     c_username                = CString::new(username).unwrap_or_else(|e| { errx!(1, "pam_start: {}\n\t{}", MSG_PARSE_CSTRING, e); });
+    let     result: i32;
     
     let mut conversation = c_ffi::pam_conv {
         conv: pam_conv_wrap::<T>,

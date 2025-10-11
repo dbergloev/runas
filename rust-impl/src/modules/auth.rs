@@ -38,6 +38,7 @@
  */
 
 use super::shared::*;
+
 use super::user::{
     Account,
     Group
@@ -54,7 +55,16 @@ mod feat {
     use crate::modules::shared::*;
     use crate::modules::passwd::ask_password;
     use crate::modules::user::Account;
-    use crate::modules::pam_ffi::{CONV, PAM_SUCCESS, PamConv, pam_start, pam_authenticate, pam_acct_mgmt, pam_end};
+    
+    use crate::modules::pam_ffi::{
+        CONV, 
+        PAM_SUCCESS, 
+        PamConv, 
+        pam_start, 
+        pam_authenticate, 
+        pam_acct_mgmt, 
+        pam_end
+    };
 
     /**
      *
@@ -67,8 +77,10 @@ mod feat {
         /**
          *
          */
-        fn prompt(& mut self, msg: &str, _style: CONV) -> Result<String, NULL> {
-            Ok(ask_password(msg, self.flags))
+        fn prompt(&mut self, msg: &str, _style: CONV) -> Result<String, NULL> {
+            Ok(
+                ask_password(msg, self.flags)
+            )
         }
         
         /**
@@ -95,13 +107,13 @@ mod feat {
         
         if let Ok(mut handle) = pam_start(env!("CARGO_PKG_NAME"), user.name(), &mut conv) {
             let mut result = match pam_authenticate(&mut handle, 0) {
-                Ok(_) => 0 as i32,
+                Ok(_) => PAM_SUCCESS,
                 Err(code) => code
             };
 
             if result == PAM_SUCCESS {
                 result = match pam_acct_mgmt(&mut handle, 0) {
-                    Ok(_) => 0 as i32,
+                    Ok(_) => PAM_SUCCESS,
                     Err(code) => code
                 };
             }
@@ -121,9 +133,17 @@ mod feat {
 mod feat {
 
     use crate::modules::shared::*;
-    use crate::modules::passwd::{ask_password, time_compare};
     use crate::modules::user::Account;
-    use crate::modules::shadow_ffi::{crypt, getspnam};
+    
+    use crate::modules::passwd::{
+        ask_password, 
+        time_compare
+    };
+    
+    use crate::modules::shadow_ffi::{
+        crypt, 
+        getspnam
+    };
 
     /**
      * Shadow-file authentication backend.

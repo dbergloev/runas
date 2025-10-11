@@ -41,7 +41,10 @@
 mod c_ffi {
     extern crate libc;
 
-    use libc::{spwd, c_char};
+    use libc::{
+        spwd, 
+        c_char
+    };
 
     extern "C" {
         /**
@@ -63,8 +66,17 @@ mod c_ffi {
 }
 
 use super::shared::*;
-use std::ffi::{CStr, CString};
 use std::ptr;
+
+use libc::{
+    spwd, 
+    c_char
+};
+
+use std::ffi::{
+    CStr, 
+    CString
+};
 
 /**
  * Rust-safe wrapper for `libcrypt::crypt()`.
@@ -81,7 +93,7 @@ pub fn crypt(passwd: &str, salt: &str) -> Option<String> {
     let c_salt = CString::new(salt).unwrap_or_else(|e| { errx!(1, "crypt: {}\n\t{}", MSG_PARSE_CSTRING, e); });
     
     unsafe {
-        let result = c_ffi::crypt(c_passwd.as_ptr(), c_salt.as_ptr());
+        let result: *mut c_char = c_ffi::crypt(c_passwd.as_ptr(), c_salt.as_ptr());
         
         if result != ptr::null_mut() {
             return Some(CStr::from_ptr(result).to_string_lossy().into_owned());   
@@ -105,7 +117,7 @@ pub fn getspnam(username: &str) -> Option<String> {
     let c_username = CString::new(username).unwrap_or_else(|e| { errx!(1, "getspnam: {}\n\t{}", MSG_PARSE_CSTRING, e); });
 
     unsafe {
-        let spwd_ptr = c_ffi::getspnam(c_username.as_ptr());
+        let spwd_ptr: *mut spwd = c_ffi::getspnam(c_username.as_ptr());
         
         if spwd_ptr != ptr::null_mut() {
             let spwd_ref = &*spwd_ptr;
