@@ -48,7 +48,9 @@ extern crate runas;
 
 use runas::modules::auth::authenticate;
 use runas::modules::shared::*;
+use std::os::unix::ffi::OsStrExt;
 use std::env;
+use std::path::PathBuf;
 use std::ffi::CString;
 use atty::Stream;
 
@@ -294,6 +296,16 @@ fn main() {
             if #[cfg(not(feature = "use_run0"))] {
                 argv_out.push(cstr!("--shell"));
                 argv_out.push(cstr!("--scope"));
+                
+            } else {
+                let path: Result<PathBuf, _> = env::current_dir();
+            
+                if let Ok(cwd) = path {
+                    argv_out.push(cstr!("--chdir"));
+                    argv_out.push(cstr!(
+                        cwd.as_os_str().as_bytes()
+                    ));
+                }
             }
         }
     
