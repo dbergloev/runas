@@ -20,6 +20,13 @@
 
 use bitflags::bitflags;
 
+/**
+ *
+ */
+pub trait TypeCheck {
+    fn is_true(&self) -> bool;
+}
+
 /* Just because Rust's naming scheme is ugly and stupid.
  * It may not be a real NULL pointer, but it symbols the same thing. 
  */

@@ -46,21 +46,21 @@
 #[macro_use]
 extern crate runas;
 
-use runas::modules::auth::authenticate;
+use cfg_if::cfg_if;
+
 use runas::modules::shared::*;
+use runas::modules::proc::exec;
 use std::env;
 use std::ffi::CString;
-use atty::Stream;
+
+use runas::modules::auth::{
+    authenticate,
+    AuthType
+};
 
 use runas::modules::user::{
     Group, 
     Account
-};
-
-use nix::unistd::{
-    execvp, 
-    setuid, 
-    Uid
 };
 
 use getopts::{
@@ -68,8 +68,11 @@ use getopts::{
     Matches
 };
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "use_run0")] {
+#[cfg(not(feature = "backend_scopex"))]
+    use atty::Stream;
+
+cfg_if! {
+    if #[cfg(feature = "backend_run0")] {
         use std::os::unix::ffi::OsStrExt;
         use std::path::PathBuf;
     }
@@ -144,9 +147,10 @@ fn get_argv_options() -> Options {
  * The UID placeholder (index 2) is later replaced dynamically
  * when the target user is resolved.
  */
+#[cfg(not(feature = "backend_scopex"))]
 fn get_argv() -> Vec<std::ffi::CString> {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "use_run0")] {
+    cfg_if! {
+        if #[cfg(feature = "backend_run0")] {
             let argv = vec![
                 cstr!("run0"),
                 cstr!("--user"), cstr!(EMPTY),      // MUST be in this order
@@ -171,6 +175,50 @@ fn get_argv() -> Vec<std::ffi::CString> {
     return argv;
 }
 
+/** 
+ *  Build a complete environment list for execve.
+ * 
+ *  This creates a new environment vector starting with essential defaults
+ *  and retained host variables (`TERM`, `DISPLAY`, `SSH_AUTH_SOCK`, etc.),
+ *  then appends all entries from PAM.  
+ *  If PAM defines the same variable later, it takes precedence.
+ */
+#[cfg(feature = "backend_scopex")]
+pub fn build_environment(
+    envp: &mut Vec<CString>,
+    pam_envp: &[CString],
+    preserve: &[&str],
+    target_shell: &str,
+    target_name: &str,
+    target_home: &str,
+) { 
+    // --- Preserve selected variables from current process ---
+    for key in preserve {
+        if let Ok(val) = env::var(key) {
+            envp.push(
+                cstr!(format!("{}={}", key, val))
+            );
+        }
+    }
+    
+    envp.push(
+        cstr!(format!("SHELL={}", target_shell))
+    );
+    
+    envp.push(
+        cstr!(format!("USER={}", target_name))
+    );
+    
+    envp.push(
+        cstr!(format!("HOME={}", target_home))
+    );
+
+    // Append everything from PAM
+    for val in pam_envp {
+        envp.push(val.clone());
+    }
+}
+
 /**
  * Program entry point.
  *
@@ -182,8 +230,17 @@ fn get_argv() -> Vec<std::ffi::CString> {
  * Exits immediately on error via `errx!()`.
  */
 fn main() {
+    cfg_if! {
+        if #[cfg(feature = "backend_scopex")] {
+            let mut envp:     Vec<CString> = vec![cstr!("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")];
+            let mut argv_out               = Vec::new();
+            
+        } else {
+            let mut argv_out: Vec<CString> = get_argv();
+        }
+    }
+
     let     argv_in:   Vec<String>      = env::args().collect();
-    let mut argv_out:  Vec<CString>     = get_argv();
     let     argv_opt:  Options          = get_argv_options();
     let mut flags:     RunFlags         = RunFlags::NONE;
     let mut group_obj: Option<Group>    = None;
@@ -196,6 +253,18 @@ fn main() {
             errx!(1, e);
         }
     };
+    
+    // Define environment variables to preserve
+    #[cfg(feature = "backend_scopex")]
+    let preserve: Vec<&str> = vec![
+        "TERM",
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "SSH_AUTH_SOCK",
+        "XAUTHORITY",
+        "COLORTERM",
+        "LANG"
+    ];
     
     for cli_opt in ARGV_SCHEME {
         if argv_parsed.opt_present(cli_opt.name) {
@@ -226,10 +295,12 @@ fn main() {
                     
                     if group_obj.is_none() {
                         errx!(1, "Group {} is not valid", cli_value);
-                        
-                    } else {
-                        cfg_if::cfg_if! {
-                            if #[cfg(feature = "use_run0")] {
+                    }  
+                    
+                    #[cfg(not(feature = "backend_scopex"))]
+                    if !group_obj.is_none() {
+                        cfg_if! {
+                            if #[cfg(feature = "backend_run0")] {
                                 argv_out.push(cstr!("--group"));
                             
                             } else {
@@ -237,17 +308,32 @@ fn main() {
                             }
                         }
 
-                        argv_out.push(cstr!(cli_value));
+                        argv_out.push(cstr!(&*cli_value));
                     }
                 }
                 
                 OPT_VERSION => {
-                    #[cfg(feature = "use_pam")]
-                    println!("{} {} PAM", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-                    
-                    #[cfg(not(feature = "use_pam"))]
-                    println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-                    
+                    cfg_if! {
+                        if #[cfg(all(feature = "use_pam", feature = "backend_scopex"))] {
+                            println!("{} {} PAM,SCOPEX", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                            
+                        } else if #[cfg(all(feature = "use_pam", feature = "backend_run0"))] {
+                            println!("{} {} PAM,RUN0", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                        
+                        } else if #[cfg(feature = "use_pam")] {
+                            println!("{} {} PAM", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                            
+                        } else if #[cfg(feature = "backend_scopex")] {
+                            println!("{} {} SCOPEX", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                        
+                        } else if #[cfg(feature = "backend_run0")] {
+                            println!("{} {} RUN0", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                        
+                        } else {
+                            println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                        }
+                    }
+
                     return;
                 }
                 
@@ -256,8 +342,17 @@ fn main() {
                         errx!(1, "Missing environment variable");
                     });
                     
-                    argv_out.push(cstr!("--setenv"));
-                    argv_out.push(cstr!(cli_value));
+                    cfg_if! {
+                        if #[cfg(feature = "backend_scopex")] {
+                            envp.push(
+                                cstr!(&*cli_value)
+                            );
+                        
+                        } else {
+                            argv_out.push(cstr!("--setenv"));
+                            argv_out.push(cstr!(&*cli_value));
+                        }
+                    }
                 }
                 
                 OPT_SHELL => flags |= RunFlags::SHELL,
@@ -288,6 +383,13 @@ fn main() {
         target.set_group(group);
     }
     
+    // Get the currently used shell, fallback to sh
+    #[cfg(feature = "backend_scopex")]
+    let target_shell: String = match env::var("SHELL") {
+        Ok(val) if !val.trim().is_empty() => val,
+        _ => String::from("/bin/sh"),
+    };
+    
     // Do some last systemd-run configuration
     if (flags & RunFlags::SHELL) != RunFlags::NONE {
         if argv_parsed.free.len() > 0 {
@@ -297,12 +399,8 @@ fn main() {
             errx!(1, "The --stdin option is not allowed combined with the --shell option");
         }
 
-        cfg_if::cfg_if! {
-            if #[cfg(not(feature = "use_run0"))] {
-                argv_out.push(cstr!("--shell"));
-                argv_out.push(cstr!("--scope"));
-                
-            } else {
+        cfg_if! {
+            if #[cfg(feature = "backend_run0")] {
                 let path: Result<PathBuf, _> = env::current_dir();
             
                 if let Ok(cwd) = path {
@@ -311,46 +409,103 @@ fn main() {
                         cwd.as_os_str().as_bytes()
                     ));
                 }
+                
+            } else if #[cfg(feature = "backend_scopex")] {    
+                argv_out.push(
+                    cstr!(&*target_shell)
+                );
+                
+                argv_out.push(
+                    cstr!(format!("-{}", &*target_shell))
+                );
+                
+            } else {
+                argv_out.push(cstr!("--shell"));
+                argv_out.push(cstr!("--scope"));
             }
         }
     
     } else {
-        if atty::is(Stream::Stdout) 
-                && atty::is(Stream::Stderr) 
-                && atty::is(Stream::Stdin) {
-        
-            argv_out.push(cstr!("--pty"));
+        cfg_if! {
+            if #[cfg(feature = "backend_scopex")] {
+                let parts: Option<(&String, &[String])> = argv_parsed.free.split_first();
             
-        } else {
-            argv_out.push(cstr!("--pipe"));
-        }
-        
-        cfg_if::cfg_if! {
-            if #[cfg(not(feature = "use_run0"))] {
-                argv_out.push(cstr!("--service-type=exec"));
-                argv_out.push(cstr!("--wait"));
+                // Copy all of the argv that execvp() should run
+                if let Some((first, rest)) = parts {
+                    argv_out.push(
+                        cstr!(&**first)
+                    );
+                    
+                    argv_out.push(
+                        cstr!(&**first)
+                    );
+                    
+                    // Push all remaining arguments
+                    for opt in rest {
+                        argv_out.push(
+                            cstr!(&**opt)
+                        );
+                    }
+                }
+            
+            } else {
+                if atty::is(Stream::Stdout) 
+                        && atty::is(Stream::Stderr) 
+                        && atty::is(Stream::Stdin) {
+                
+                    argv_out.push(cstr!("--pty"));
+                    
+                } else {
+                    argv_out.push(cstr!("--pipe"));
+                }
+                
+                cfg_if! {
+                    if #[cfg(not(feature = "backend_run0"))] {
+                        argv_out.push(cstr!("--service-type=exec"));
+                        argv_out.push(cstr!("--wait"));
+                    }
+                }
+                
+                argv_out.push(cstr!("--"));
+                
+                // Copy all of the argv that systemd-run should execute
+                for opt in argv_parsed.free {
+                    argv_out.push(cstr!(opt));
+                }
             }
         }
-        
-        argv_out.push(cstr!("--"));
     }
     
     // Set the uid that systemd-run should use
-    argv_out[2] = cstr!(target.uid().to_string());
-    
-    // Copy all of the argv that systemd-run should execute
-    for opt in argv_parsed.free {
-        argv_out.push(cstr!(opt));
+    cfg_if! {
+        if #[cfg(not(feature = "backend_scopex"))] {
+            argv_out[2] = cstr!(target.uid().to_string());
+        }
     }
     
-    // Authenticate the current user, the target user and spawn systemd
-    if authenticate(&user, &target, flags) {
-        // Set current UID to root to disable polkit authentication
-        if !setuid( Uid::from_raw(0) ).is_ok() {
-            errx!(1, "Failed to set uid");
-        }
+    let result: AuthType = authenticate(&user, &target, flags);
     
-        execvp(&argv_out[0], &argv_out).expect("Failed to spawn process");
+    // Authenticate the current user, the target user and spawn the process
+    if result.is_true() {
+        cfg_if! {
+            if #[cfg(feature = "backend_scopex")] {
+                let pam_envp: Vec<CString> = result.unwrap();
+            
+                build_environment(
+                    &mut envp,
+                    &pam_envp,
+                    &preserve,
+                    &*target_shell,
+                    target.name(),
+                    target.home()
+                );
+            
+                exec(&user, &target, &argv_out[0], &argv_out[1..], &envp);
+            
+            } else {
+                exec(&user, &argv_out[0], &argv_out);
+            }
+        }
         
         // We should never reach this point
     }

@@ -37,12 +37,55 @@
  * privilege and membership checks.
  */
 
-use super::shared::*;
+use cfg_if::cfg_if;
 
+use super::shared::*;
 use super::user::{
     Account,
     Group
 };
+
+cfg_if! {
+    if #[cfg(not(feature = "use_pam"))] {
+        pub type AuthType = bool;
+        const DEFAULT_TRUE: AuthType = true;
+        const DEFAULT_FALSE: AuthType = false;
+        
+        impl TypeCheck for AuthType {
+            #[inline]
+            fn is_true(&self) -> bool { *self }
+        }
+        
+    } else if #[cfg(feature = "backend_scopex")] {
+        use std::ffi::CString;
+        use std::env;
+        
+        pub type AuthType = Result<Vec<CString>, i32>;
+        #[allow(dead_code)]
+        const DEFAULT_TRUE: AuthType = Ok(Vec::new());
+        const DEFAULT_FALSE: AuthType = Err(-1);
+        
+        impl TypeCheck for AuthType {
+            #[inline]
+            fn is_true(&self) -> bool { self.is_ok() }
+        }
+        
+    } else {
+        use crate::modules::pam_ffi::{
+            PAM_SUCCESS,
+            PAM_AUTH_ERR
+        };
+        
+        pub type AuthType = i32;
+        const DEFAULT_TRUE: AuthType = PAM_SUCCESS;
+        const DEFAULT_FALSE: AuthType = PAM_AUTH_ERR;
+        
+        impl TypeCheck for AuthType {
+            #[inline]
+            fn is_true(&self) -> bool { *self == PAM_SUCCESS }
+        }
+    }
+}
 
 /*
  * We use a sub module in order to wrap the feature check in a block.
@@ -55,16 +98,40 @@ mod feat {
     use crate::modules::shared::*;
     use crate::modules::passwd::ask_password;
     use crate::modules::user::Account;
+    use super::AuthType;
     
     use crate::modules::pam_ffi::{
-        CONV, 
-        PAM_SUCCESS, 
+        CONV,
         PamConv, 
-        pam_start, 
-        pam_authenticate, 
-        pam_acct_mgmt, 
-        pam_end
+        pam_start
     };
+    
+    use crate::modules::pam_ffi::{
+        PAM_SUCCESS,
+    };
+    
+    cfg_if! {
+        if #[cfg(feature = "backend_scopex")] {
+            use crate::modules::proc::watch_process;
+            use std::borrow::Cow;
+            use std::os::unix::io::AsRawFd;
+            use std::process;
+            use std::mem::drop;
+            
+            use crate::modules::pam_ffi::{
+                PAM_TTY,
+                PAM_USER,
+                PAM_RUSER
+            };
+            
+            use nix::unistd::{
+                isatty, 
+                ttyname,
+                fork,
+                ForkResult
+            };
+        }
+    }
 
     /**
      *
@@ -102,33 +169,102 @@ mod feat {
      * Uses the system PAM stack to authenticate a user interactively
      * through a conversation handler.
      */
-    pub fn auth(user: &Account, flags: RunFlags) -> bool {
+    pub fn auth(
+            user: &Account, 
+            #[cfg(feature = "backend_scopex")] target: &Account, 
+            flags: RunFlags
+    ) -> AuthType {
+    
         let mut conv = Conv {flags};
         
-        if let Ok(mut handle) = pam_start(env!("CARGO_PKG_NAME"), user.name(), &mut conv) {
-            let mut result = match pam_authenticate(&mut handle, 0) {
-                Ok(_) => PAM_SUCCESS,
-                Err(code) => code
-            };
+        match pam_start(env!("CARGO_PKG_NAME"), user.name(), &mut conv) {
+            Ok(handle) => {
+                let mut result = handle.authenticate(0);
 
-            if result == PAM_SUCCESS {
-                result = match pam_acct_mgmt(&mut handle, 0) {
-                    Ok(_) => PAM_SUCCESS,
-                    Err(code) => code
-                };
+                cfg_if! {
+                    if #[cfg(feature = "backend_scopex")] {
+                        let fd: i32 = std::io::stdin().as_raw_fd();
+                        
+                        if let Ok(status) = isatty(fd) && status {
+                            if let Ok(tty_path) = ttyname(fd) {
+                                let tty_os: Cow<'_, str> = tty_path.as_os_str().to_string_lossy();
+                                let tty: &str = tty_os.strip_prefix("/dev/").unwrap_or(&tty_os);
+                               
+                                result = handle.set_item(PAM_TTY, tty);
+                            }
+                        }
+                        
+                        if result == PAM_SUCCESS {
+                            result = handle.set_item(PAM_RUSER, user.name());
+                        }
+                        
+                        if result == PAM_SUCCESS {
+                            result = handle.acct_mgmt(0);
+                        }
+                        
+                        if result == PAM_SUCCESS {
+                            result = handle.set_item(PAM_USER, target.name());
+                        }
+                        
+                        if result == PAM_SUCCESS {
+                            result = handle.open_session(0);
+                        }
+                    
+                        if result == PAM_SUCCESS {
+                            match unsafe { fork() } {
+                                Ok(ForkResult::Child) => {
+                                    // Child process, return and continue
+                                    return Ok(
+                                        handle.getenvlist()
+                                    )
+                                }
+                                
+                                Ok(ForkResult::Parent { child }) => {
+                                    // Wait for the process and keep PAM session alive
+                                    let status_code: i32 = watch_process(child);
+                                    
+                                    // Ensure that PAM has a chance to quit before terminating
+                                    drop(handle);
+                                    
+                                    // Terminate the parent when the child exits
+                                    process::exit(status_code);
+                                }
+                                
+                                Err(err) => {
+                                    eprintln!("fork failed: {}", err);
+                                }
+                            }
+                        }
+                        
+                        Err(result)
+                    
+                    } else {
+                        if result == PAM_SUCCESS {
+                            result = handle.acct_mgmt(0);
+                        }
+                    
+                        result
+                    }
+                }
             }
             
-            pam_end(&mut handle, result).ok();
-            
-            if result == PAM_SUCCESS {
-                return true;
+            Err(code) => {
+                cfg_if! {
+                    if #[cfg(feature = "backend_scopex")] {
+                        Err(code)
+                    
+                    } else {
+                        code
+                    }
+                }
             }
         }
-    
-        false
     }
 }
 
+/**
+ *
+ */
 #[cfg(not(feature = "use_pam"))]
 mod feat {
 
@@ -165,6 +301,16 @@ mod feat {
 }
 
 /**
+ *
+ */
+#[cfg(all(feature = "backend_scopex", feature = "use_pam"))]
+pub fn get_envp() -> Vec<CString> {
+    env::vars()
+        .filter_map(|(key, value)| CString::new(format!("{key}={value}")).ok())
+        .collect()
+}
+
+/**
  * Authenticate a user against a target account.
  *
  * @param user     The invoking account
@@ -173,7 +319,7 @@ mod feat {
  *
  * @return `true` if authentication succeeds or is not required, `false` otherwise.
  */
-pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> bool {
+pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> AuthType {
     /*
      * The following will evaluate to true:
      *  - The user is root (Can do whatever they want).
@@ -186,8 +332,15 @@ pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> bool {
      */
     if user.is_root() || (target.uid() == user.uid()
                         && (target.gid() == user.gid() || user.is_member(target.group()))) {
-                            
-        return true;
+                         
+        cfg_if! {
+            if #[cfg(all(feature = "backend_scopex", feature = "use_pam"))] {
+                return Ok( get_envp() );
+            
+            } else {
+                return DEFAULT_TRUE;
+            }
+        }
         
     } else if (flags & RunFlags::AUTH_NO_PROMPT) != RunFlags::NONE 
             && (flags & RunFlags::AUTH_STDIN) == RunFlags::NONE {
@@ -199,7 +352,7 @@ pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> bool {
          * We just fail, beause auth() will launch a prompt if stdin is disabled, 
          * and caller did not want a prompt. 
          */
-        return false;
+        return DEFAULT_FALSE;
         
     } else if let Some(wheel) = Group::from(AUTH_GROUP) {
         /*
@@ -207,16 +360,23 @@ pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> bool {
          * own UID and GID's. 
          */
         if !user.is_member(&wheel) {
-            return false;
+            return DEFAULT_FALSE;
         }
             
     } else {
         /*
          * Default to false.
          */
-        return false;
+        return DEFAULT_FALSE;
     }
 
-    feat::auth(&user, flags)
+    cfg_if! {
+        if #[cfg(all(feature = "backend_scopex", feature = "use_pam"))] {
+            feat::auth(user, target, flags)
+            
+        } else {
+            feat::auth(user, flags)
+        }
+    }
 }
 

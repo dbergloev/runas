@@ -23,6 +23,10 @@ pub mod shared;
 pub mod user;
 pub mod passwd;
 pub mod auth;
+pub mod proc;
+
+#[cfg(feature = "backend_scopex")]
+pub mod path;
 
 #[cfg(not(feature = "use_pam"))]
 pub mod shadow_ffi;

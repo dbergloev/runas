@@ -46,7 +46,7 @@ mod c_ffi {
         c_char
     };
 
-    extern "C" {
+    unsafe extern "C" {
         /**
          * Link to the C library function `crypt()`.
          *

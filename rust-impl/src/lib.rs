@@ -20,3 +20,15 @@
 
 pub mod modules;
 
+#[macro_use]
+extern crate cfg_if;
+
+#[cfg(all(feature = "backend_run0", feature = "backend_scopex"))]
+compile_error!("You cannot combine the features 'backend_run0' and 'backend_scopex'");
+
+#[cfg(all(feature = "backend_run0", feature = "without_expand_env"))]
+compile_error!("The feature 'without_expand_env' does not work with the 'backend_run0' feature");
+
+#[cfg(all(feature = "backend_scopex", feature = "without_expand_env"))]
+compile_error!("The feature 'without_expand_env' does not work with the 'backend_scopex' feature");
+
