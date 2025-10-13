@@ -172,18 +172,22 @@ mod feat {
     pub fn auth(
             user: &Account, 
             #[cfg(feature = "backend_scopex")] target: &Account, 
-            flags: RunFlags
+            flags: RunFlags,
+            #[cfg(feature = "backend_scopex")] disable_auth: bool
     ) -> AuthType {
     
         let mut conv = Conv {flags};
         
         match pam_start(env!("CARGO_PKG_NAME"), user.name(), &mut conv) {
             Ok(handle) => {
-                let mut result = handle.authenticate(0);
-
                 cfg_if! {
                     if #[cfg(feature = "backend_scopex")] {
+                        let mut result = PAM_SUCCESS;
                         let fd: i32 = std::io::stdin().as_raw_fd();
+                        
+                        if !disable_auth {
+                            result = handle.authenticate(0);
+                        }
                         
                         if let Ok(status) = isatty(fd) && status {
                             if let Ok(tty_path) = ttyname(fd) {
@@ -239,6 +243,8 @@ mod feat {
                         Err(result)
                     
                     } else {
+                        let mut result = handle.authenticate(0);
+                        
                         if result == PAM_SUCCESS {
                             result = handle.acct_mgmt(0);
                         }
@@ -335,6 +341,11 @@ pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> AuthTy
                          
         cfg_if! {
             if #[cfg(all(feature = "backend_scopex", feature = "use_pam"))] {
+                if target.uid() != user.uid() {
+                    // Even when root, we should get a new session when switching user, but no authentication.
+                    return feat::auth(user, target, flags, user.is_root());
+                }
+            
                 return Ok( get_envp() );
             
             } else {
@@ -363,20 +374,19 @@ pub fn authenticate(user: &Account, target: &Account, flags: RunFlags) -> AuthTy
             return DEFAULT_FALSE;
         }
             
-    } else {
-        /*
-         * Default to false.
-         */
-        return DEFAULT_FALSE;
-    }
-
-    cfg_if! {
-        if #[cfg(all(feature = "backend_scopex", feature = "use_pam"))] {
-            feat::auth(user, target, flags)
-            
-        } else {
-            feat::auth(user, flags)
+        cfg_if! {
+            if #[cfg(all(feature = "backend_scopex", feature = "use_pam"))] {
+                return feat::auth(user, target, flags, false);
+                
+            } else {
+                return feat::auth(user, flags);
+            }
         }
     }
+    
+    /*
+     * Default to false.
+     */
+    DEFAULT_FALSE
 }
 
