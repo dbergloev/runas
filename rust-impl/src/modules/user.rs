@@ -126,16 +126,29 @@ impl User {
      * Aborts the process with `errx!()` if the system user database cannot be queried.
      */
     pub fn from(user: &str) -> Option<Self> {
-        let uinfo: Option<C_User>;
-        
-        if user.chars().all(char::is_numeric) {
-            let parsed_uid = user.parse::<u32>().unwrap_or_else(|_e| { errx!(1, MSG_PARSE_NUM); });
+        let mut uinfo: Option<C_User>;
+
+        if let Some(rest) = user.strip_prefix('#') {
+            // Explicit numeric ID (forced with '#')
+            let parsed_uid = rest.parse::<u32>().unwrap_or_else(|_e| { errx!(1, MSG_PARSE_NUM); });
             let uid = C_Uid::from_raw(parsed_uid);
 
-            // Even though we have a UID, we validate it.
+            // Validate that this UID exists
             uinfo = C_User::from_uid(uid).unwrap_or_else(|_e| { errx!(1, MSG_IO_USER_DB); });
-        
+
+        } else if user.chars().all(char::is_numeric) {
+            // Numeric-looking name — try name first, then fallback to UID lookup
+            uinfo = C_User::from_name(user).unwrap_or_else(|_e| { errx!(1, MSG_IO_USER_DB); });
+
+            if uinfo.is_none() {
+                let parsed_uid = user.parse::<u32>().unwrap_or_else(|_e| { errx!(1, MSG_PARSE_NUM); });
+                let uid = C_Uid::from_raw(parsed_uid);
+                
+                uinfo = C_User::from_uid(uid).unwrap_or_else(|_e| { errx!(1, MSG_IO_USER_DB); });
+            }
+
         } else {
+            // Normal username
             uinfo = C_User::from_name(user).unwrap_or_else(|_e| { errx!(1, MSG_IO_USER_DB); });
         }
         
@@ -182,14 +195,26 @@ impl Group {
      * Validates the entry against the system database and returns `Some(Group)` if found.
      */
     pub fn from(group: &str) -> Option<Self> {
-        let ginfo: Option<C_Group>;
+        let mut ginfo: Option<C_Group>;
         
-        if group.chars().all(char::is_numeric) {
-            let parsed_gid = group.parse::<u32>().unwrap_or_else(|_e| { errx!(1, MSG_PARSE_NUM); });
+        if let Some(rest) = group.strip_prefix('#') {
+            // Explicit numeric ID (forced with '#')
+            let parsed_gid = rest.parse::<u32>().unwrap_or_else(|_e| { errx!(1, MSG_PARSE_NUM); });
             let gid = C_Gid::from_raw(parsed_gid);
 
-            // Even though we have a GID, we validate it.
+            // Validate that this GID exists
             ginfo = C_Group::from_gid(gid).unwrap_or_else(|_e| { errx!(1, MSG_IO_USER_DB); });
+
+        } else if group.chars().all(char::is_numeric) {
+            // Numeric-looking name — try name first, then fallback to GID lookup
+            ginfo = C_Group::from_name(group).unwrap_or_else(|_e| { errx!(1, MSG_IO_USER_DB); });
+
+            if ginfo.is_none() {
+                let parsed_gid = group.parse::<u32>().unwrap_or_else(|_e| { errx!(1, MSG_PARSE_NUM); });
+                let gid = C_Gid::from_raw(parsed_gid);
+                
+                ginfo = C_Group::from_gid(gid).unwrap_or_else(|_e| { errx!(1, MSG_IO_USER_DB); });
+            }
         
         } else {
             ginfo = C_Group::from_name(group).unwrap_or_else(|_e| { errx!(1, MSG_IO_USER_DB); });
