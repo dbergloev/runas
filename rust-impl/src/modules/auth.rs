@@ -57,13 +57,14 @@ cfg_if! {
         }
         
     } else if #[cfg(feature = "backend_scopex")] {
+        use crate::modules::pam_ffi::PAM_CRED_INSUFFICIENT;
         use std::ffi::CString;
         use std::env;
         
-        pub type AuthType = Result<Vec<CString>, i32>;
+        pub type AuthType = Result<Vec<CString>, u32>;
         #[allow(dead_code)]
         const DEFAULT_TRUE: AuthType = Ok(Vec::new());
-        const DEFAULT_FALSE: AuthType = Err(-1);
+        const DEFAULT_FALSE: AuthType = Err(PAM_CRED_INSUFFICIENT);
         
         impl TypeCheck for AuthType {
             #[inline]
@@ -76,7 +77,7 @@ cfg_if! {
             PAM_AUTH_ERR
         };
         
-        pub type AuthType = i32;
+        pub type AuthType = u32;
         const DEFAULT_TRUE: AuthType = PAM_SUCCESS;
         const DEFAULT_FALSE: AuthType = PAM_AUTH_ERR;
         

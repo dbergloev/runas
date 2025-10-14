@@ -68,106 +68,31 @@ mod c_ffi {
         c_char, 
         c_void
     };
-
-    #[allow(dead_code)]
-    pub const PAM_PROMPT_ECHO_OFF: i32 = 1;
-    #[allow(dead_code)]
-    pub const PAM_PROMPT_ECHO_ON: i32 = 2;
-    #[allow(dead_code)]
-    pub const PAM_ERROR_MSG: i32 = 3;
-    #[allow(dead_code)]
-    pub const PAM_TEXT_INFO: i32 = 4;
     
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct pam_message {
-        pub msg_style: c_int,
-        pub msg:       *const c_char,
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct pam_response {
-        pub resp:         *mut c_char,
-        pub resp_retcode: c_int,
-    }
-
-    #[repr(C)]
-    #[derive(Copy, Clone)]
-    pub struct pam_conv {
-        pub conv: unsafe extern "C" fn(
-            num_msg:     c_int,
-            msg:         *const *const pam_message,
-            resp:        *mut *mut pam_response,
-            appdata_ptr: *mut c_void,
-        ) -> c_int,
-        pub appdata_ptr: *mut c_void,
-    }
+    use super::{
+        pam_conv,
+        pam_handle_t
+    };
 
     unsafe extern "C" {
         pub fn pam_start(service_name: *const c_char, user: *const c_char, 
                             pam_conversation: *const pam_conv, pamh: *mut *mut super::pam_handle_t) -> c_int;
                             
-        pub fn pam_authenticate(pamh: *mut super::pam_handle_t, flags: c_int) -> c_int;
-        pub fn pam_acct_mgmt(pamh: *mut super::pam_handle_t, flags: c_int) -> c_int;
-        pub fn pam_end(pamh: *mut super::pam_handle_t, pam_status: c_int) -> c_int;
-        pub fn pam_getenvlist(pamh: *mut super::pam_handle_t) -> *mut *mut libc::c_char;
-        pub fn pam_setcred(pamh: *mut super::pam_handle_t, flags: c_int) -> c_int;
-        pub fn pam_open_session(pamh: *mut super::pam_handle_t, flags: c_int) -> c_int;
-        pub fn pam_close_session(pamh: *mut super::pam_handle_t, flags: c_int) -> c_int;
-        pub fn pam_set_item(pamh: *mut super::pam_handle_t, item_type: c_int, item: *const c_void) -> c_int;
+        pub fn pam_authenticate(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+        pub fn pam_acct_mgmt(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+        pub fn pam_end(pamh: *mut pam_handle_t, pam_status: c_int) -> c_int;
+        pub fn pam_getenvlist(pamh: *mut pam_handle_t) -> *mut *mut libc::c_char;
+        pub fn pam_setcred(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+        pub fn pam_open_session(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+        pub fn pam_close_session(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+        pub fn pam_set_item(pamh: *mut pam_handle_t, item_type: c_int, item: *const c_void) -> c_int;
     }
 }
 
-#[allow(non_camel_case_types)]
-pub type pam_handle_t = u8;
-
-/*
- * Error codes from PAM
+/**
+ * Include auto-generated types and constants from pam_appl.h
  */
-#[allow(dead_code)]
-pub const PAM_SUCCESS: i32 = 0;
-#[allow(dead_code)]
-pub const PAM_SYSTEM_ERR: i32 = 4;
-#[allow(dead_code)]
-pub const PAM_BUF_ERR: i32 = 5;
-#[allow(dead_code)]
-pub const PAM_PERM_DENIED: i32 = 6;
-#[allow(dead_code)]
-pub const PAM_AUTH_ERR: i32 = 7;
-#[allow(dead_code)]
-pub const PAM_CRED_INSUFFICIENT: i32 = 8;
-#[allow(dead_code)]
-pub const PAM_AUTHINFO_UNAVAIL: i32 = 9;
-#[allow(dead_code)]
-pub const PAM_USER_UNKNOWN: i32 = 10;
-#[allow(dead_code)]
-pub const PAM_MAXTRIES: i32 = 11;
-#[allow(dead_code)]
-pub const PAM_NEW_AUTHTOK_REQD: i32 = 12;
-#[allow(dead_code)]
-pub const PAM_ACCT_EXPIRED: i32 = 13;
-#[allow(dead_code)]
-pub const PAM_CONV_ERR: i32 = 19;
-#[allow(dead_code)]
-pub const PAM_ABORT: i32 = 26;
-
-/*
- * PAM item types
- */
-pub const PAM_TTY: i32          = 3;
-#[allow(dead_code)]
-pub const PAM_USER: i32         = 2;
-#[allow(dead_code)]
-pub const PAM_RUSER: i32        = 8;
-
-/*
- * Used by pam_setcred()
- */
-#[allow(dead_code)]
-pub const PAM_ESTABLISH_CRED: i32   = 0x0002;
-#[allow(dead_code)]
-pub const PAM_DELETE_CRED: i32      = 0x0004;
+include!("../pam_bindings.rs");
 
 /**
  * Defines the message types emitted during PAM conversation callbacks.
@@ -205,13 +130,13 @@ pub trait PamConv {
  */
 unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
         num_msg: c_int, 
-        msg: *const *const c_ffi::pam_message, 
-        resp: *mut *mut c_ffi::pam_response, 
+        msg: *mut *const pam_message, 
+        resp: *mut *mut pam_response, 
         appdata_ptr: *mut c_void) -> c_int {
     
     let mut result = PAM_SUCCESS;
     let reply = unsafe {
-        calloc(num_msg as size_t, mem::size_of::<c_ffi::pam_response>() as size_t) as *mut c_ffi::pam_response
+        calloc(num_msg as size_t, mem::size_of::<pam_response>() as size_t) as *mut pam_response
     };
 
     if reply.is_null() {
@@ -224,11 +149,11 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
 
     for i in 0..num_msg {
         let reqest_ptr = unsafe { 
-            *(msg.offset(i as isize)) as *const c_ffi::pam_message 
+            *(msg.offset(i as isize)) as *const pam_message 
         };
         
         let reply_ptr = unsafe { 
-            reply.offset(i as isize) as *mut c_ffi::pam_response 
+            reply.offset(i as isize) as *mut pam_response 
         };
         
         if reqest_ptr == ptr::null() || reply_ptr == ptr::null_mut() {
@@ -252,11 +177,11 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
             }
         };
         
-        match reqest.msg_style as i32 {
-            c_ffi::PAM_PROMPT_ECHO_ON |
-            c_ffi::PAM_PROMPT_ECHO_OFF => {
+        match reqest.msg_style as u32 {
+            PAM_PROMPT_ECHO_ON |
+            PAM_PROMPT_ECHO_OFF => {
             
-                let style = if reqest.msg_style as i32 == c_ffi::PAM_PROMPT_ECHO_ON {
+                let style = if reqest.msg_style as u32 == PAM_PROMPT_ECHO_ON {
                     CONV::ECHO_ON
                 } else {
                     CONV::ECHO_OFF
@@ -273,11 +198,11 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
                 }
             }
             
-            c_ffi::PAM_ERROR_MSG => {
+            PAM_ERROR_MSG => {
                 callback.msg(msg, CONV::ERROR);
             }
             
-            c_ffi::PAM_TEXT_INFO => {
+            PAM_TEXT_INFO => {
                 callback.msg(msg, CONV::MSG);
             }
             
@@ -312,7 +237,7 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
  */
 pub struct PamHandle {
     handle: *mut pam_handle_t,
-    result: Cell<i32>,
+    result: Cell<u32>,
     session: Cell<bool>
 }
 
@@ -323,9 +248,9 @@ impl PamHandle {
     /**
      * Authenticate a user associated with the given PAM handle.
      */
-    pub fn authenticate(&self, flags: u32) -> i32 {
+    pub fn authenticate(&self, flags: u32) -> u32 {
         unsafe {
-            self.result.set(c_ffi::pam_authenticate(self.handle, flags as c_int) as i32);
+            self.result.set(c_ffi::pam_authenticate(self.handle, flags as c_int) as u32);
         }
         
         self.result.get()
@@ -334,9 +259,9 @@ impl PamHandle {
     /**
      * Perform PAM account management checks (e.g., expiration, validity).
      */
-    pub fn acct_mgmt(&self, flags: u32) -> i32 {
+    pub fn acct_mgmt(&self, flags: u32) -> u32 {
         unsafe {
-            self.result.set(c_ffi::pam_acct_mgmt(self.handle, flags as c_int) as i32);
+            self.result.set(c_ffi::pam_acct_mgmt(self.handle, flags as c_int) as u32);
         }
         
         self.result.get()
@@ -348,16 +273,16 @@ impl PamHandle {
      * This should be called after successful authentication and account checks.
      * It initializes session modules like pam_systemd, pam_env, etc.
      */
-    pub fn open_session(&self, flags: u32) -> i32 {
+    pub fn open_session(&self, flags: u32) -> u32 {
         if self.session.get() {
             return PAM_SUCCESS;
         }
     
         unsafe { 
-            let mut result = c_ffi::pam_setcred(self.handle, PAM_ESTABLISH_CRED as c_int) as i32;
+            let mut result = c_ffi::pam_setcred(self.handle, PAM_REINITIALIZE_CRED as c_int) as u32;
             
             if result == PAM_SUCCESS {
-                result = c_ffi::pam_open_session(self.handle, flags as c_int) as i32;
+                result = c_ffi::pam_open_session(self.handle, flags as c_int) as u32;
                 
                 if result != PAM_SUCCESS {
                     c_ffi::pam_setcred(self.handle, PAM_DELETE_CRED as c_int);
@@ -379,13 +304,13 @@ impl PamHandle {
      *
      * This should be called once the session process terminates.
      */
-    pub fn close_session(&self, flags: u32) -> i32 {
+    pub fn close_session(&self, flags: u32) -> u32 {
         if !self.session.get() {
             return PAM_SUCCESS;
         }
     
         unsafe {
-            let result = c_ffi::pam_close_session(self.handle, flags as c_int) as i32;
+            let result = c_ffi::pam_close_session(self.handle, flags as c_int) as u32;
             
             if result == PAM_SUCCESS {
                 c_ffi::pam_setcred(self.handle, PAM_DELETE_CRED as c_int);
@@ -404,11 +329,11 @@ impl PamHandle {
     /**
      * 
      */
-    pub fn set_item(&self, item_type: i32, value: &str) -> i32 {
+    pub fn set_item(&self, item_type: u32, value: &str) -> u32 {
         let c_value = CString::new(value).unwrap_or_else(|e| { errx!(1, "set_item: {}\n\t{}", MSG_PARSE_CSTRING, e); });
     
         unsafe {
-            self.result.set(c_ffi::pam_set_item(self.handle, item_type as c_int, c_value.as_ptr() as *const c_void) as i32);
+            self.result.set(c_ffi::pam_set_item(self.handle, item_type as c_int, c_value.as_ptr() as *const c_void) as u32);
         }
         
         self.result.get()
@@ -488,19 +413,19 @@ impl Drop for PamHandle {
  *
  * @return PAM handle wrapped in `Result`, or error code on failure.
  */
-pub fn pam_start<T: PamConv>(service: &str, username: &str, conversation: &mut T) -> Result<PamHandle, i32> {
+pub fn pam_start<T: PamConv>(service: &str, username: &str, conversation: &mut T) -> Result<PamHandle, u32> {
     let mut handle: *mut pam_handle_t = std::ptr::null_mut();
     let     c_service                 = CString::new(service).unwrap_or_else(|e| { errx!(1, "pam_start: {}\n\t{}", MSG_PARSE_CSTRING, e); });
     let     c_username                = CString::new(username).unwrap_or_else(|e| { errx!(1, "pam_start: {}\n\t{}", MSG_PARSE_CSTRING, e); });
-    let     result: i32;
+    let     result: u32;
     
-    let mut conversation = c_ffi::pam_conv {
-        conv: pam_conv_wrap::<T>,
+    let mut conversation = pam_conv {
+        conv: Some(pam_conv_wrap::<T>),
         appdata_ptr: conversation as *mut T as *mut c_void
     };
     
     unsafe {
-        result = c_ffi::pam_start(c_service.as_ptr(), c_username.as_ptr(), &mut conversation, &mut handle) as i32;
+        result = c_ffi::pam_start(c_service.as_ptr(), c_username.as_ptr(), &mut conversation, &mut handle) as u32;
     }
         
     if result == PAM_SUCCESS && !handle.is_null() {
