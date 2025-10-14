@@ -387,7 +387,16 @@ fn main() {
     #[cfg(feature = "backend_scopex")]
     let target_shell: String = match env::var("SHELL") {
         Ok(val) if !val.trim().is_empty() => val,
-        _ => String::from("/bin/sh"),
+        _ => {
+            let s: &str = user.shell().trim();
+            
+            if !s.is_empty() {
+                s.to_string()
+            
+            } else {
+                String::from("/bin/sh")
+            }
+        }
     };
     
     // Do some last systemd-run configuration
