@@ -178,8 +178,14 @@ mod feat {
     ) -> AuthType {
     
         let mut conv = Conv {flags};
+        let mut pam_user = user.name();
         
-        match pam_start(env!("CARGO_PKG_NAME"), user.name(), &mut conv) {
+        #[cfg(feature = "backend_scopex")]
+        if disable_auth {
+            pam_user = target.name();
+        }
+        
+        match pam_start(env!("CARGO_PKG_NAME"), pam_user, &mut conv) {
             Ok(handle) => {
                 cfg_if! {
                     if #[cfg(feature = "backend_scopex")] {
@@ -203,12 +209,14 @@ mod feat {
                             result = handle.set_item(PAM_RUSER, user.name());
                         }
                         
-                        if result == PAM_SUCCESS {
-                            result = handle.acct_mgmt(0);
-                        }
-                        
-                        if result == PAM_SUCCESS {
-                            result = handle.set_item(PAM_USER, target.name());
+                        if !disable_auth {
+                            if result == PAM_SUCCESS {
+                                result = handle.acct_mgmt(0);
+                            }
+                            
+                            if result == PAM_SUCCESS {
+                                result = handle.set_item(PAM_USER, target.name());
+                            }
                         }
                         
                         if result == PAM_SUCCESS {
