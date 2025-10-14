@@ -200,6 +200,11 @@ pub fn build_environment(
             );
         }
     }
+
+    // Append everything from PAM
+    for val in pam_envp {
+        envp.push(val.clone());
+    }
     
     envp.push(
         cstr!(format!("SHELL={}", target_shell))
@@ -212,11 +217,6 @@ pub fn build_environment(
     envp.push(
         cstr!(format!("HOME={}", target_home))
     );
-
-    // Append everything from PAM
-    for val in pam_envp {
-        envp.push(val.clone());
-    }
 }
 
 /**
