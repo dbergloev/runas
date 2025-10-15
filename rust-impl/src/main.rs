@@ -103,16 +103,17 @@ struct CliOption {
     val:  &'static str
 }
 
-const OPT_USER    : CliOption  =  CliOption { flag: "u",   name: "user",            desc: "Run process as the specified user name or ID",      val: "USER"  };
-const OPT_GROUP   : CliOption  =  CliOption { flag: "g",   name: "group",           desc: "Run process as the specified group name or ID",     val: "GROUP" };
-const OPT_SHELL   : CliOption  =  CliOption { flag: "s",   name: "shell",           desc: "Run $SHELL as the target user",                     val: EMPTY   };
-const OPT_HELP    : CliOption  =  CliOption { flag: "h",   name: "help",            desc: "Display this help screen",                          val: EMPTY   };
-const OPT_NONINT  : CliOption  =  CliOption { flag: "n",   name: "non-interactive", desc: "Non-interactive mode, don't prompt for password",   val: EMPTY   };
-const OPT_STDIN   : CliOption  =  CliOption { flag: "S",   name: "stdin",           desc: "Read password from standard input",                 val: EMPTY   };
-const OPT_VERSION : CliOption  =  CliOption { flag: "v",   name: "version",         desc: "Display version information and exit",              val: EMPTY   };
-const OPT_ENV     : CliOption  =  CliOption { flag: EMPTY, name: "env",             desc: "Set environment variable",                          val: "ENV"   };
+const OPT_USER     : CliOption  =  CliOption { flag: "u",   name: "user",            desc: "Run process as the specified user name or ID",      val: "USER"  };
+const OPT_GROUP    : CliOption  =  CliOption { flag: "g",   name: "group",           desc: "Run process as the specified group name or ID",     val: "GROUP" };
+const OPT_SHELL    : CliOption  =  CliOption { flag: "s",   name: "shell",           desc: "Run $SHELL as the target user",                     val: EMPTY   };
+const OPT_HELP     : CliOption  =  CliOption { flag: "h",   name: "help",            desc: "Display this help screen",                          val: EMPTY   };
+const OPT_NONINT   : CliOption  =  CliOption { flag: "n",   name: "non-interactive", desc: "Non-interactive mode, don't prompt for password",   val: EMPTY   };
+const OPT_STDIN    : CliOption  =  CliOption { flag: "S",   name: "stdin",           desc: "Read password from standard input",                 val: EMPTY   };
+const OPT_VERSION  : CliOption  =  CliOption { flag: "v",   name: "version",         desc: "Display version information and exit",              val: EMPTY   };
+const OPT_ENV      : CliOption  =  CliOption { flag: EMPTY, name: "env",             desc: "Set environment variable",                          val: "ENV"   };
+const OPT_PRESERVE : CliOption  =  CliOption { flag: EMPTY, name: "preserve-env",    desc: "Comma separated list of variables to preserve",     val: "LIST"  };
 
-const ARGV_SCHEME: &[CliOption] = &[OPT_USER, OPT_GROUP, OPT_SHELL, OPT_HELP, OPT_NONINT, OPT_STDIN, OPT_VERSION, OPT_ENV];
+const ARGV_SCHEME: &[CliOption] = &[OPT_USER, OPT_GROUP, OPT_SHELL, OPT_HELP, OPT_NONINT, OPT_STDIN, OPT_VERSION, OPT_ENV, OPT_PRESERVE];
 
 /**
  * Prints the usage/help text based on the current command-line schema.
@@ -351,6 +352,32 @@ fn main() {
                         } else {
                             argv_out.push(cstr!("--setenv"));
                             argv_out.push(cstr!(&*cli_value));
+                        }
+                    }
+                }
+                
+                OPT_PRESERVE => {
+                    let cli_value: String = argv_parsed.opt_str(cli_opt.name).unwrap_or_else(|| {
+                        errx!(1, "Missing environment list");
+                    });
+                
+                    for raw in cli_value.split(',') {
+                        let name: &str = raw.trim();
+                        
+                        if !name.is_empty() {
+                            if let Ok(val) = env::var(name) {
+                                cfg_if! {
+                                    if #[cfg(feature = "backend_scopex")] {
+                                        envp.push(
+                                            cstr!(format!("{}={}", name, val))
+                                        );
+                                    
+                                    } else {
+                                        argv_out.push(cstr!("--setenv"));
+                                        argv_out.push(cstr!(format!("{}={}", name, val)));
+                                    }
+                                }
+                            }
                         }
                     }
                 }
