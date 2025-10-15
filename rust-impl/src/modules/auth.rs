@@ -303,7 +303,7 @@ mod feat {
         if let Some(hash) = getspnam(user.name()) {
             let pwd = ask_password(PROMPT_TEXT, flags);
             
-            if let Some(user_hash) = crypt(&pwd, &hash) {
+            if let Some(user_hash) = crypt(pwd, &hash) {
                 return time_compare(&user_hash, &hash);
             }
             

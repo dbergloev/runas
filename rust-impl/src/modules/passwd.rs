@@ -34,6 +34,7 @@
 use super::shared::*;
 use std::os::unix::io::RawFd;
 use nix::sys::stat::Mode;
+use zeroize::Zeroize;
 
 use nix::libc::{
     STDIN_FILENO, 
@@ -217,8 +218,19 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
         fcntl(input, FcntlArg::F_SETFL(OFlag::from_bits_truncate(flags_fcntl))).ok();
     }
     
-    return std::str::from_utf8(&buffer[..i])
-            .unwrap_or_else(|e| { errx!(1, "ask_password: {}\n\t{}", MSG_PARSE_UTF8, e); })
-            .to_string();
+    let result = match std::str::from_utf8(&buffer[..i]) {
+        Ok(s) => s.to_string(),
+        Err(e) => {
+            buffer.zeroize();
+            ch[0] = b'\0';
+            
+            errx!(1, "ask_password: {}\n\t{}", MSG_PARSE_UTF8, e);
+        }
+    };
+ 
+    buffer.zeroize();
+    ch[0] = b'\0';
+    
+    result
 }
 

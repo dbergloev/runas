@@ -35,6 +35,7 @@
 
 use super::shared::*;
 use std::cell::Cell;
+use zeroize::Zeroize;
 
 use std::ffi::{
     CString, 
@@ -47,6 +48,7 @@ use std::{
 };
     
 use libc::{
+    c_char,
     c_int, 
     c_void, 
     size_t, 
@@ -188,10 +190,27 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
                 };
             
                 if let Ok(ret) = callback.prompt(msg, style) {
-                    let ret = CString::new(&*ret).unwrap_or_else(|e| { errx!(1, "pam_conv: {}\n\t{}", MSG_PARSE_CSTRING, e); });
-                    reply.resp = unsafe {
-                        strdup(ret.as_ptr())
+                    // Consume into bytes
+                    let mut bytes = ret.into_bytes();
+                    // Make it CString compatible
+                    bytes.push(0u8);
+                    
+                    // Copy the data using PAM compatible allocator
+                    let dup_ptr = unsafe { 
+                        strdup(bytes.as_ptr() as *const c_char) 
                     };
+                    
+                    if dup_ptr.is_null() {
+                        bytes.zeroize();
+                        errx!(1, "pam_conv: strdup failed (ENOMEM)");
+                    }
+                    
+                    // Clear original data
+                    bytes.zeroize();
+                    drop(bytes);
+                    
+                    // PAM will free this later
+                    reply.resp = dup_ptr as *mut c_char;
                     
                 } else {
                     result = PAM_CONV_ERR;

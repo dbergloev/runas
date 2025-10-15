@@ -67,6 +67,7 @@ mod c_ffi {
 
 use super::shared::*;
 use std::ptr;
+use zeroize::Zeroize;
 
 use libc::{
     spwd, 
@@ -88,19 +89,30 @@ use std::ffi::{
  * @param passwd  Plaintext password
  * @param salt    Salt string (e.g., "$6$somesalt")
  */
-pub fn crypt(passwd: &str, salt: &str) -> Option<String> {
-    let c_passwd = CString::new(passwd).unwrap_or_else(|e| { errx!(1, "crypt: {}\n\t{}", MSG_PARSE_CSTRING, e); });
-    let c_salt = CString::new(salt).unwrap_or_else(|e| { errx!(1, "crypt: {}\n\t{}", MSG_PARSE_CSTRING, e); });
+pub fn crypt(passwd: String, salt: &str) -> Option<String> {
+    let mut bytes = passwd.into_bytes();
+    bytes.push(0u8);
     
-    unsafe {
-        let result: *mut c_char = c_ffi::crypt(c_passwd.as_ptr(), c_salt.as_ptr());
-        
-        if result != ptr::null_mut() {
-            return Some(CStr::from_ptr(result).to_string_lossy().into_owned());   
-        }
+    let c_salt = CString::new(salt).unwrap_or_else(|e| {
+        bytes.zeroize();
+        errx!(1, "crypt: {}\n\t{}", MSG_PARSE_CSTRING, e);
+    });
+    
+    let hash: *mut c_char = unsafe {
+        c_ffi::crypt(bytes.as_ptr() as *const c_char, c_salt.as_ptr())
+    };
+    
+    bytes.zeroize();
+    
+    if hash == ptr::null_mut() {
+        return None;
     }
     
-    return None;
+    return Some(
+        unsafe {
+            CStr::from_ptr(hash).to_string_lossy().into_owned()
+        }
+    );
 }
 
 /**
