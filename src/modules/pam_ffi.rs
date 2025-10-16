@@ -175,7 +175,9 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
             
         } else {
             unsafe {
-                CStr::from_ptr(reqest.msg).to_str().unwrap_or_else(|e| { errx!(1, "pam_conv: {}\n\t{}", MSG_PARSE_CSTRING, e); })
+                unwrap!(
+                    result CStr::from_ptr(reqest.msg).to_str()
+                )
             }
         };
         
@@ -349,7 +351,7 @@ impl PamHandle {
      * 
      */
     pub fn set_item(&self, item_type: u32, value: &str) -> u32 {
-        let c_value = CString::new(value).unwrap_or_else(|e| { errx!(1, "set_item: {}\n\t{}", MSG_PARSE_CSTRING, e); });
+        let c_value = cstring!(value);
     
         unsafe {
             self.result.set(c_ffi::pam_set_item(self.handle, item_type as c_int, c_value.as_ptr() as *const c_void) as u32);
@@ -387,7 +389,10 @@ impl PamHandle {
                 }
 
                 let c_str = CStr::from_ptr(entry);
-                envs.push(CString::new(c_str.to_bytes()).unwrap());
+                if let Ok(cstr) = CString::new(c_str.to_bytes()) {
+                    envs.push(cstr);
+                }
+
                 i += 1;
             }
 
@@ -434,8 +439,8 @@ impl Drop for PamHandle {
  */
 pub fn pam_start<T: PamConv>(service: &str, username: &str, conversation: &mut T) -> Result<PamHandle, u32> {
     let mut handle: *mut pam_handle_t = std::ptr::null_mut();
-    let     c_service                 = CString::new(service).unwrap_or_else(|e| { errx!(1, "pam_start: {}\n\t{}", MSG_PARSE_CSTRING, e); });
-    let     c_username                = CString::new(username).unwrap_or_else(|e| { errx!(1, "pam_start: {}\n\t{}", MSG_PARSE_CSTRING, e); });
+    let     c_service                 = cstring!(service);
+    let     c_username                = cstring!(username);
     let     result: u32;
     
     let mut conversation = pam_conv {

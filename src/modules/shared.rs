@@ -19,6 +19,11 @@
 // DEALINGS IN THE SOFTWARE.
 
 use bitflags::bitflags;
+use cfg_if::cfg_if;
+use std::ffi::{
+    CString, 
+    NulError
+};
 
 /**
  *
@@ -33,6 +38,7 @@ pub trait TypeCheck {
 pub type NULL = ();
 pub const NULL: NULL = ();
 
+pub const MSG_UNWRAP_RESULT: &'static str = "Failed while unwrapping result or option";
 pub const MSG_CALL_IMPL: &'static str = "Invalid call to missing implementation";
 pub const MSG_PARSE_UTF8: &'static str = "Failed to parse UTF-8 data";
 pub const MSG_PARSE_CSTRING: &'static str = "Failed to parse CString";
@@ -71,6 +77,87 @@ macro_rules! errx {
     ($x:expr, $y:expr, $($z:expr),+) => {
         eprintln!($y, $($z),+);
         std::process::exit($x);
+    };
+}
+
+#[cfg_attr(debug_assertions, track_caller)]
+pub fn into_cstring<T: Into<Vec<u8>>>(s: T) -> CString {
+    CString::new(s).unwrap_or_else(|_e: NulError| {
+        cfg_if! {
+            if #[cfg(debug_assertions)] {
+                let loc = std::panic::Location::caller();
+                eprintln!(
+                    "debug: CString::new() failed at {}:{} -> {} (nul byte at position {})",
+                    loc.file(),
+                    loc.line(),
+                    _e,
+                    _e.nul_position()
+                );
+            }
+        }
+
+        errx!(1, "CString: {}", MSG_PARSE_CSTRING);
+    })
+}
+
+#[macro_export]
+macro_rules! cstring {
+    ($str:expr) => {
+        $crate::modules::shared::into_cstring($str)
+    };
+
+    ($fmt:expr, $($arg:tt)+) => {
+        $crate::modules::shared::into_cstring(::std::format!($fmt, $($arg)+))
+    };
+}
+
+// For Result<T, E>
+#[track_caller]
+pub fn unwrap_result<T, E: std::fmt::Display>(res: Result<T, E>) -> T {
+    res.unwrap_or_else(|_e| {
+        cfg_if! {
+            if #[cfg(debug_assertions)] {
+                let loc = std::panic::Location::caller();
+                eprintln!(
+                    "debug: unwrap_result() failed at {}:{} -> {} ({})",
+                    loc.file(),
+                    loc.line(),
+                    msg
+                    _e
+                );
+            }
+        }
+
+        errx!(1, "unwrap: {}", MSG_UNWRAP_RESULT);
+    })
+}
+
+// For Option<T>
+#[track_caller]
+pub fn unwrap_option<T>(opt: Option<T>) -> T {
+    opt.unwrap_or_else(|| {
+        #[cfg(debug_assertions)]
+        {
+            let loc = Location::caller();
+            eprintln!(
+                "debug: unwrap_option() failed at {}:{} -> {} (None)",
+                loc.file(),
+                loc.line(),
+                msg
+            );
+        }
+
+        errx!(1, "unwrap: {}", MSG_UNWRAP_RESULT);
+    })
+}
+
+#[macro_export]
+macro_rules! unwrap {
+    (result $expr:expr) => {
+        $crate::modules::shared::unwrap_result($expr)
+    };
+    (option $expr:expr) => {
+        $crate::modules::shared::unwrap_option($expr)
     };
 }
 

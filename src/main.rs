@@ -79,20 +79,6 @@ cfg_if! {
 }
 
 /**
- * Creates a `CString` from a Rust string literal or value, terminating the program on error.
- *
- * This macro safely converts a Rust `&str` or `String` into a null-terminated
- * `CString` suitable for C FFI calls (e.g., `execvp()` arguments).  
- */
-macro_rules! cstr {
-    ($str:expr) => {
-        CString::new($str).unwrap_or_else(|_e| { 
-            errx!(1, "argv: {}", MSG_PARSE_CSTRING); 
-        })
-    };
-}
-
-/**
  * A structure to store available options
  */
 #[derive(PartialEq, Eq)]
@@ -153,22 +139,22 @@ fn get_argv() -> Vec<std::ffi::CString> {
     cfg_if! {
         if #[cfg(feature = "backend_run0")] {
             let argv = vec![
-                cstr!("run0"),
-                cstr!("--user"), cstr!(EMPTY),      // MUST be in this order
-                cstr!("--shell-prompt-prefix="),    // Remove the stupid SuperUser icon
-                cstr!("--background=")              // Remove the annoying red background
+                cstring!("run0"),
+                cstring!("--user"), cstring!(EMPTY),      // MUST be in this order
+                cstring!("--shell-prompt-prefix="),    // Remove the stupid SuperUser icon
+                cstring!("--background=")              // Remove the annoying red background
             ];
         
         } else {
             let argv = vec![
-                cstr!("systemd-run"),
-                cstr!("--uid"), cstr!(EMPTY), // MUST be in this order
-                cstr!("--quiet"),
-                cstr!("-G"),
-                cstr!("--send-sighup"),
-                cstr!("--same-dir"),
+                cstring!("systemd-run"),
+                cstring!("--uid"), cstring!(EMPTY), // MUST be in this order
+                cstring!("--quiet"),
+                cstring!("-G"),
+                cstring!("--send-sighup"),
+                cstring!("--same-dir"),
                 #[cfg(not(feature = "without_expand_env"))]
-                cstr!("--expand-environment=false")
+                cstring!("--expand-environment=false")
             ];
         }
     }
@@ -197,7 +183,7 @@ pub fn build_environment(
     for key in preserve {
         if let Ok(val) = env::var(key) {
             envp.push(
-                cstr!(format!("{}={}", key, val))
+                cstring!("{}={}", key, val)
             );
         }
     }
@@ -208,15 +194,15 @@ pub fn build_environment(
     }
     
     envp.push(
-        cstr!(format!("SHELL={}", target_shell))
+        cstring!("SHELL={}", target_shell)
     );
     
     envp.push(
-        cstr!(format!("USER={}", target_name))
+        cstring!("USER={}", target_name)
     );
     
     envp.push(
-        cstr!(format!("HOME={}", target_home))
+        cstring!("HOME={}", target_home)
     );
 }
 
@@ -233,7 +219,7 @@ pub fn build_environment(
 fn main() {
     cfg_if! {
         if #[cfg(feature = "backend_scopex")] {
-            let mut envp:     Vec<CString> = vec![cstr!("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")];
+            let mut envp:     Vec<CString> = vec![cstring!("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")];
             let mut argv_out               = Vec::new();
             
         } else {
@@ -302,14 +288,14 @@ fn main() {
                     if !group_obj.is_none() {
                         cfg_if! {
                             if #[cfg(feature = "backend_run0")] {
-                                argv_out.push(cstr!("--group"));
+                                argv_out.push(cstring!("--group"));
                             
                             } else {
-                                argv_out.push(cstr!("--gid"));
+                                argv_out.push(cstring!("--gid"));
                             }
                         }
 
-                        argv_out.push(cstr!(&*cli_value));
+                        argv_out.push(cstring!(cli_value));
                     }
                 }
                 
@@ -346,12 +332,12 @@ fn main() {
                     cfg_if! {
                         if #[cfg(feature = "backend_scopex")] {
                             envp.push(
-                                cstr!(&*cli_value)
+                                cstring!(cli_value)
                             );
                         
                         } else {
-                            argv_out.push(cstr!("--setenv"));
-                            argv_out.push(cstr!(&*cli_value));
+                            argv_out.push(cstring!("--setenv"));
+                            argv_out.push(cstring!(cli_value));
                         }
                     }
                 }
@@ -369,12 +355,12 @@ fn main() {
                                 cfg_if! {
                                     if #[cfg(feature = "backend_scopex")] {
                                         envp.push(
-                                            cstr!(format!("{}={}", name, val))
+                                            cstring!("{}={}", name, val)
                                         );
                                     
                                     } else {
-                                        argv_out.push(cstr!("--setenv"));
-                                        argv_out.push(cstr!(format!("{}={}", name, val)));
+                                        argv_out.push(cstring!("--setenv"));
+                                        argv_out.push(cstring!("{}={}", name, val));
                                     }
                                 }
                             }
@@ -440,24 +426,24 @@ fn main() {
                 let path: Result<PathBuf, _> = env::current_dir();
             
                 if let Ok(cwd) = path {
-                    argv_out.push(cstr!("--chdir"));
-                    argv_out.push(cstr!(
+                    argv_out.push(cstring!("--chdir"));
+                    argv_out.push(cstring!(
                         cwd.as_os_str().as_bytes()
                     ));
                 }
                 
             } else if #[cfg(feature = "backend_scopex")] {    
                 argv_out.push(
-                    cstr!(&*target_shell)
+                    cstring!(&*target_shell)
                 );
                 
                 argv_out.push(
-                    cstr!(format!("-{}", &*target_shell))
+                    cstring!("-{}", &*target_shell)
                 );
                 
             } else {
-                argv_out.push(cstr!("--shell"));
-                argv_out.push(cstr!("--scope"));
+                argv_out.push(cstring!("--shell"));
+                argv_out.push(cstring!("--scope"));
             }
         }
     
@@ -469,17 +455,17 @@ fn main() {
                 // Copy all of the argv that execvp() should run
                 if let Some((first, rest)) = parts {
                     argv_out.push(
-                        cstr!(&**first)
+                        cstring!(&**first)
                     );
                     
                     argv_out.push(
-                        cstr!(&**first)
+                        cstring!(&**first)
                     );
                     
                     // Push all remaining arguments
                     for opt in rest {
                         argv_out.push(
-                            cstr!(&**opt)
+                            cstring!(&**opt)
                         );
                     }
                 }
@@ -489,24 +475,24 @@ fn main() {
                         && atty::is(Stream::Stderr) 
                         && atty::is(Stream::Stdin) {
                 
-                    argv_out.push(cstr!("--pty"));
+                    argv_out.push(cstring!("--pty"));
                     
                 } else {
-                    argv_out.push(cstr!("--pipe"));
+                    argv_out.push(cstring!("--pipe"));
                 }
                 
                 cfg_if! {
                     if #[cfg(not(feature = "backend_run0"))] {
-                        argv_out.push(cstr!("--service-type=exec"));
-                        argv_out.push(cstr!("--wait"));
+                        argv_out.push(cstring!("--service-type=exec"));
+                        argv_out.push(cstring!("--wait"));
                     }
                 }
                 
-                argv_out.push(cstr!("--"));
+                argv_out.push(cstring!("--"));
                 
                 // Copy all of the argv that systemd-run should execute
                 for opt in argv_parsed.free {
-                    argv_out.push(cstr!(opt));
+                    argv_out.push(cstring!(opt));
                 }
             }
         }
@@ -515,7 +501,7 @@ fn main() {
     // Set the uid that systemd-run should use
     cfg_if! {
         if #[cfg(not(feature = "backend_scopex"))] {
-            argv_out[2] = cstr!(target.uid().to_string());
+            argv_out[2] = cstring!(target.uid().to_string());
         }
     }
     
