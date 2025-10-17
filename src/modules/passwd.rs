@@ -31,7 +31,8 @@
  *     afterward.
  */
 
-use super::shared::*;
+use crate::shared::*;
+use crate::errx;
 use std::os::unix::io::RawFd;
 use nix::sys::stat::Mode;
 use zeroize::Zeroize;

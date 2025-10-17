@@ -34,7 +34,8 @@
  * ```
  */
 
-use super::shared::*;
+use crate::shared::*;
+use crate::errx;
 use std::ffi::CString;
 
 use std::cell::{

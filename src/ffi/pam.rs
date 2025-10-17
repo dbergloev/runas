@@ -33,7 +33,7 @@
  * C library, but every call is validated and checked at the boundary.
  */
 
-use crate::modules::shared::*;
+use crate::shared::*;
 use std::cell::Cell;
 use zeroize::Zeroize;
 use std::ffi::CStr;

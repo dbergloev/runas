@@ -48,7 +48,7 @@ extern crate runas;
 
 use cfg_if::cfg_if;
 
-use runas::modules::shared::*;
+use runas::shared::*;
 use runas::modules::proc::exec;
 use std::env;
 use std::ffi::CString;

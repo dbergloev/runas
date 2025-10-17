@@ -19,7 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 use cfg_if::cfg_if;
-
+use crate::errx;
 use super::user::Account;
 use std::ffi::CString;
 
@@ -31,7 +31,7 @@ use nix::unistd::{
 
 cfg_if! {
     if #[cfg(feature = "backend_scopex")] {
-        use super::shared::*;
+        use crate::shared::*;
         use super::path::find_executable;
         use std::os::unix::ffi::OsStrExt;
         use std::time::Duration;

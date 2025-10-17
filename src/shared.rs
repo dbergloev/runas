@@ -103,11 +103,11 @@ pub fn into_cstring<T: Into<Vec<u8>>>(s: T) -> CString {
 #[macro_export]
 macro_rules! cstring {
     ($str:expr) => {
-        $crate::modules::shared::into_cstring($str)
+        $crate::shared::into_cstring($str)
     };
 
     ($fmt:expr, $($arg:tt)+) => {
-        $crate::modules::shared::into_cstring(::std::format!($fmt, $($arg)+))
+        $crate::shared::into_cstring(::std::format!($fmt, $($arg)+))
     };
 }
 
@@ -154,10 +154,10 @@ pub fn unwrap_option<T>(opt: Option<T>) -> T {
 #[macro_export]
 macro_rules! unwrap {
     (result $expr:expr) => {
-        $crate::modules::shared::unwrap_result($expr)
+        $crate::shared::unwrap_result($expr)
     };
     (option $expr:expr) => {
-        $crate::modules::shared::unwrap_option($expr)
+        $crate::shared::unwrap_option($expr)
     };
 }
 

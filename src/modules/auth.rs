@@ -39,7 +39,7 @@
 
 use cfg_if::cfg_if;
 
-use super::shared::*;
+use crate::shared::*;
 use super::user::{
     Account,
     Group
@@ -95,7 +95,7 @@ cfg_if! {
 #[cfg(feature = "use_pam")]
 mod feat {
 
-    use crate::modules::shared::*;
+    use crate::shared::*;
     use crate::modules::passwd::ask_password;
     use crate::modules::user::Account;
     use super::AuthType;
@@ -282,7 +282,8 @@ mod feat {
 #[cfg(not(feature = "use_pam"))]
 mod feat {
 
-    use crate::modules::shared::*;
+    use crate::shared::*;
+    use crate::errx;
     use crate::modules::user::Account;
     
     use crate::modules::passwd::{

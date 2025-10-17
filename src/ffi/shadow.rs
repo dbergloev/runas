@@ -65,7 +65,7 @@ mod c_ffi {
     }
 }
 
-use crate::modules::shared::*;
+use crate::shared::*;
 use crate::errx;
 use std::ptr;
 use zeroize::Zeroize;

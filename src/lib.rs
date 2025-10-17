@@ -19,6 +19,7 @@
 // DEALINGS IN THE SOFTWARE.
 
 pub mod modules;
+pub mod shared;
 
 mod ffi {
     #[cfg(not(feature = "use_pam"))]
