@@ -19,36 +19,35 @@
 // DEALINGS IN THE SOFTWARE.
 
 fn main() {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let out_file: std::path::PathBuf = [manifest_dir.as_str(), "src", "pam_bindings.rs"].iter().collect();
+    #[cfg(feature = "use_pam")]
+    {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+        let out_file: std::path::PathBuf = [manifest_dir.as_str(), "src", "pam_bindings.rs"].iter().collect();
+            
+        println!("cargo:rerun-if-changed={}", out_file.display());
+        println!("cargo:rerun-if-changed=build.rs");
+            
+        if out_file.exists() {
+            println!("cargo:warning=build.rs: {} exists — skipping generation", out_file.display());
+            return;
+        }
         
-    println!("cargo:rerun-if-changed={}", out_file.display());
-    println!("cargo:rerun-if-changed=build.rs");
-        
-    if std::env::var("CARGO_FEATURE_USE_PAM").is_err() {
-        println!("cargo:warning=build.rs: feature `use_pam` not enabled; skipping bindgen");
-        return;
-        
-    } else if out_file.exists() {
-        println!("cargo:warning=build.rs: {} exists — skipping generation", out_file.display());
-        return;
+        println!("cargo:warning=build.rs: Generating {}", out_file.display());
+
+        let bindings = bindgen::Builder::default()
+            // point to the system header
+            .header("/usr/include/security/pam_appl.h")
+            // only generate PAM_* constants/types
+            .allowlist_var("PAM_.*")
+            .allowlist_type("pam_.*")
+            .layout_tests(false)
+            .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+            .generate()
+            .expect("Unable to generate PAM bindings");
+
+        bindings
+            .write_to_file(&out_file)
+            .expect("Couldn't write bindings!");
     }
-    
-    println!("cargo:warning=build.rs: Generating {}", out_file.display());
-
-    let bindings = bindgen::Builder::default()
-        // point to the system header
-        .header("/usr/include/security/pam_appl.h")
-        // only generate PAM_* constants/types
-        .allowlist_var("PAM_.*")
-        .allowlist_type("pam_.*")
-        .layout_tests(false)
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
-        .generate()
-        .expect("Unable to generate PAM bindings");
-
-    bindings
-        .write_to_file(&out_file)
-        .expect("Couldn't write bindings!");
 }
 

@@ -16,11 +16,11 @@ cfg-if = "1"
 zeroize = "1.5"
 
 [build-dependencies]
-bindgen = "0.66"
+bindgen = { version = "0.66", optional = true }
 
 [features]
 without_expand_env = []         # cargo build --features without_expand_env
-use_pam = []                    # RUSTFLAGS="-l pam" cargo build --features use_pam
+use_pam = ["bindgen"]           # RUSTFLAGS="-l pam" cargo build --features use_pam
 backend_run0 = []               # Use run0 instead of systemd-run directly
 backend_scopex = []             # Bypass systemd-run completely and directly communicate with systemd
 
