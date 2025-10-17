@@ -28,9 +28,3 @@ pub mod proc;
 #[cfg(feature = "backend_scopex")]
 pub mod path;
 
-#[cfg(not(feature = "use_pam"))]
-pub mod shadow_ffi;
-
-#[cfg(feature = "use_pam")]
-pub mod pam_ffi;
-

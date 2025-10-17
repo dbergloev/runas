@@ -57,7 +57,7 @@ cfg_if! {
         }
         
     } else if #[cfg(feature = "backend_scopex")] {
-        use crate::modules::pam_ffi::PAM_CRED_INSUFFICIENT;
+        use crate::ffi::pam::PAM_CRED_INSUFFICIENT;
         use std::ffi::CString;
         use std::env;
         
@@ -72,7 +72,7 @@ cfg_if! {
         }
         
     } else {
-        use crate::modules::pam_ffi::{
+        use crate::ffi::pam::{
             PAM_SUCCESS,
             PAM_AUTH_ERR
         };
@@ -101,13 +101,13 @@ mod feat {
     use crate::modules::user::Account;
     use super::AuthType;
     
-    use crate::modules::pam_ffi::{
+    use crate::ffi::pam::{
         CONV,
         PamConv, 
         pam_start
     };
     
-    use crate::modules::pam_ffi::{
+    use crate::ffi::pam::{
         PAM_SUCCESS,
     };
     
@@ -119,7 +119,7 @@ mod feat {
             use std::process;
             use std::mem::drop;
             
-            use crate::modules::pam_ffi::{
+            use crate::ffi::pam::{
                 PAM_TTY,
                 PAM_USER,
                 PAM_RUSER
@@ -291,7 +291,7 @@ mod feat {
         time_compare
     };
     
-    use crate::modules::shadow_ffi::{
+    use crate::ffi::shadow::{
         crypt, 
         getspnam
     };

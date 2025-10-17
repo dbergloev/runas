@@ -20,6 +20,14 @@
 
 pub mod modules;
 
+mod ffi {
+    #[cfg(not(feature = "use_pam"))]
+    pub mod shadow;
+
+    #[cfg(feature = "use_pam")]
+    pub mod pam;
+}
+
 #[macro_use]
 extern crate cfg_if;
 

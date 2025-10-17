@@ -33,9 +33,15 @@
  * C library, but every call is validated and checked at the boundary.
  */
 
-use super::shared::*;
+use crate::modules::shared::*;
 use std::cell::Cell;
 use zeroize::Zeroize;
+
+use crate::{
+    unwrap,
+    cstring,
+    errx
+};
 
 use std::ffi::{
     CString, 
@@ -91,10 +97,20 @@ mod c_ffi {
     }
 }
 
-/**
- * Include auto-generated types and constants from pam_appl.h
- */
-include!("../pam_bindings.rs");
+// Internal wrapper to apply attributes to the bindgen output
+#[allow(
+    non_upper_case_globals,
+    non_camel_case_types,
+    non_snake_case,
+    dead_code,
+    unused
+)]
+mod bindings {
+    include!("../pam_bindings.rs");
+}
+
+// Re-export everything at this level
+pub use bindings::*;
 
 /**
  * Defines the message types emitted during PAM conversation callbacks.
@@ -280,6 +296,7 @@ impl PamHandle {
     /**
      * Perform PAM account management checks (e.g., expiration, validity).
      */
+    #[allow(unused)]
     pub fn acct_mgmt(&self, flags: u32) -> u32 {
         unsafe {
             self.result.set(c_ffi::pam_acct_mgmt(self.handle, flags as c_int) as u32);
@@ -294,6 +311,7 @@ impl PamHandle {
      * This should be called after successful authentication and account checks.
      * It initializes session modules like pam_systemd, pam_env, etc.
      */
+    #[allow(unused)]
     pub fn open_session(&self, flags: u32) -> u32 {
         if self.session.get() {
             return PAM_SUCCESS;
@@ -325,6 +343,7 @@ impl PamHandle {
      *
      * This should be called once the session process terminates.
      */
+    #[allow(unused)]
     pub fn close_session(&self, flags: u32) -> u32 {
         if !self.session.get() {
             return PAM_SUCCESS;
@@ -350,6 +369,7 @@ impl PamHandle {
     /**
      * 
      */
+    #[allow(unused)]
     pub fn set_item(&self, item_type: u32, value: &str) -> u32 {
         let c_value = cstring!(value);
     
@@ -363,6 +383,7 @@ impl PamHandle {
     /**
      * Get a list of environment variables from PAM.
      */
+    #[allow(unused)]
     pub fn getenvlist(&self) -> Vec<CString> {
         let mut envs = Vec::new();
 
