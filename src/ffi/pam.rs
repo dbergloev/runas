@@ -36,16 +36,12 @@
 use crate::modules::shared::*;
 use std::cell::Cell;
 use zeroize::Zeroize;
+use std::ffi::CStr;
 
 use crate::{
     unwrap,
     cstring,
     errx
-};
-
-use std::ffi::{
-    CString, 
-    CStr
 };
     
 use std::{
@@ -384,7 +380,7 @@ impl PamHandle {
      * Get a list of environment variables from PAM.
      */
     #[allow(unused)]
-    pub fn getenvlist(&self) -> Vec<CString> {
+    pub fn getenvlist(&self) -> Vec<String> {
         let mut envs = Vec::new();
 
         unsafe {
@@ -410,8 +406,8 @@ impl PamHandle {
                 }
 
                 let c_str = CStr::from_ptr(entry);
-                if let Ok(cstr) = CString::new(c_str.to_bytes()) {
-                    envs.push(cstr);
+                if let Ok(s) = c_str.to_str() {
+                    envs.push(s.to_owned());
                 }
 
                 i += 1;

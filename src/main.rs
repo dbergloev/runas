@@ -173,7 +173,7 @@ fn get_argv() -> Vec<std::ffi::CString> {
 #[cfg(feature = "backend_scopex")]
 pub fn build_environment(
     envp: &mut Vec<CString>,
-    pam_envp: &[CString],
+    pam_envp: &[String],
     preserve: &[&str],
     target_shell: &str,
     target_name: &str,
@@ -190,7 +190,9 @@ pub fn build_environment(
 
     // Append everything from PAM
     for val in pam_envp {
-        envp.push(val.clone());
+        envp.push(
+            cstring!(&**val)
+        );
     }
     
     envp.push(
@@ -511,7 +513,7 @@ fn main() {
     if result.is_true() {
         cfg_if! {
             if #[cfg(feature = "backend_scopex")] {
-                let pam_envp: Vec<CString> = result.unwrap();
+                let pam_envp: Vec<String> = result.unwrap();
             
                 build_environment(
                     &mut envp,

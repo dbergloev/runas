@@ -58,10 +58,9 @@ cfg_if! {
         
     } else if #[cfg(feature = "backend_scopex")] {
         use crate::ffi::pam::PAM_CRED_INSUFFICIENT;
-        use std::ffi::CString;
         use std::env;
         
-        pub type AuthType = Result<Vec<CString>, u32>;
+        pub type AuthType = Result<Vec<String>, u32>;
         #[allow(dead_code)]
         const DEFAULT_TRUE: AuthType = Ok(Vec::new());
         const DEFAULT_FALSE: AuthType = Err(PAM_CRED_INSUFFICIENT);
@@ -319,9 +318,9 @@ mod feat {
  *
  */
 #[cfg(all(feature = "backend_scopex", feature = "use_pam"))]
-pub fn get_envp() -> Vec<CString> {
+pub fn get_envp() -> Vec<String> {
     env::vars()
-        .filter_map(|(key, value)| CString::new(format!("{key}={value}")).ok())
+        .map(|(key, value)| format!("{key}={value}"))
         .collect()
 }
 
