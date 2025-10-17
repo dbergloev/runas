@@ -51,7 +51,7 @@ use nix::unistd::{
     getuid
 };
 
-use libc::{
+use nix::libc::{
     gid_t,
     getgrouplist
 };

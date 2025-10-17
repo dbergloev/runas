@@ -39,9 +39,7 @@
  */
 
 mod c_ffi {
-    extern crate libc;
-
-    use libc::{
+    use nix::libc::{
         spwd, 
         c_char
     };
@@ -70,7 +68,7 @@ use crate::errx;
 use std::ptr;
 use zeroize::Zeroize;
 
-use libc::{
+use nix::libc::{
     spwd, 
     c_char
 };

@@ -33,6 +33,7 @@ cfg_if! {
     if #[cfg(feature = "backend_scopex")] {
         use crate::shared::*;
         use super::path::find_executable;
+        use nix::libc::gid_t;
         use std::os::unix::ffi::OsStrExt;
         use std::time::Duration;
         use std::thread;
@@ -209,13 +210,13 @@ pub fn watch_process(pid: Pid) -> i32 {
  *
  */
 #[cfg(feature = "backend_scopex")]
-fn initgroups(username: &str, gid: libc::gid_t) -> Result<NULL, std::io::Error> {
+fn initgroups(username: &str, gid: gid_t) -> Result<NULL, std::io::Error> {
     let c_user = CString::new(username).unwrap_or_else(|e| { errx!(1, "initgroups: {}\n\t{}", MSG_PARSE_CSTRING, e); });
     
     // SAFETY: initgroups reads /etc/group and sets supplementary group list.
     // Must be called as root.
     let r = unsafe { 
-        libc::initgroups(c_user.as_ptr() as *const c_char, gid) 
+        nix::libc::initgroups(c_user.as_ptr() as *const c_char, gid) 
     };
     
     if r != 0 {

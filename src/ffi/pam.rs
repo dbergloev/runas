@@ -49,7 +49,7 @@ use std::{
     ptr
 };
     
-use libc::{
+use nix::libc::{
     c_char,
     c_int, 
     c_void, 
@@ -67,7 +67,7 @@ use libc::{
 
 mod c_ffi {    
 
-    use libc::{
+    use nix::libc::{
         c_int, 
         c_char, 
         c_void
@@ -85,7 +85,7 @@ mod c_ffi {
         pub fn pam_authenticate(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
         pub fn pam_acct_mgmt(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
         pub fn pam_end(pamh: *mut pam_handle_t, pam_status: c_int) -> c_int;
-        pub fn pam_getenvlist(pamh: *mut pam_handle_t) -> *mut *mut libc::c_char;
+        pub fn pam_getenvlist(pamh: *mut pam_handle_t) -> *mut *mut c_char;
         pub fn pam_setcred(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
         pub fn pam_open_session(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
         pub fn pam_close_session(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
@@ -416,10 +416,10 @@ impl PamHandle {
             // Free each string and the list itself
             let mut j = 0;
             while !(*list.add(j)).is_null() {
-                libc::free(*list.add(j) as *mut libc::c_void);
+                free(*list.add(j) as *mut c_void);
                 j += 1;
             }
-            libc::free(list as *mut libc::c_void);
+            free(list as *mut c_void);
         }
 
         envs
