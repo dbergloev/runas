@@ -18,7 +18,6 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
 // DEALINGS IN THE SOFTWARE.
 
-pub mod modules;
 pub mod shared;
 
 mod ffi {
@@ -27,6 +26,16 @@ mod ffi {
 
     #[cfg(feature = "use_pam")]
     pub mod pam;
+}
+
+pub mod modules {
+    pub mod user;
+    pub mod passwd;
+    pub mod auth;
+    pub mod proc;
+    
+    #[cfg(feature = "backend_scopex")]
+    pub mod path;
 }
 
 #[macro_use]
