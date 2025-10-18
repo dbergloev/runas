@@ -161,6 +161,11 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
         }
         
         write(output, msg.as_bytes()).unwrap_or_else(|e| { errx!(1, "ask_password: {}\n\t{}", MSG_IO_TTY_ATTR, e); });
+        
+        // Not all PAM messages add a space at the end
+        if !msg.ends_with(' ') {
+            let _ = write(output, b" ");
+        }
 
     } else if let Ok(flags) = fcntl(input, FcntlArg::F_GETFL) {
         flags_fcntl = flags;
