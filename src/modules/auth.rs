@@ -144,9 +144,15 @@ mod feat {
         /**
          *
          */
-        fn prompt(&mut self, msg: &str, _style: CONV) -> Result<String, NULL> {
+        fn prompt(&mut self, msg: &str, style: CONV) -> Result<String, NULL> {
+            let mut flags = self.flags;
+            
+            if style == CONV::ECHO_OFF {
+                flags |= RunFlags::PROMPT_HIDE;
+            }
+        
             Ok(
-                ask_password(msg, self.flags)
+                ask_password(msg, flags)
             )
         }
         
@@ -301,7 +307,7 @@ mod feat {
      */
     pub fn auth(user: &Account, flags: RunFlags) -> bool {
         if let Some(hash) = getspnam(user.name()) {
-            let pwd = ask_password(PROMPT_TEXT, flags);
+            let pwd = ask_password(PROMPT_TEXT, flags | RunFlags::PROMPT_HIDE);
             
             if let Some(user_hash) = crypt(pwd, &hash) {
                 return time_compare(&user_hash, &hash);

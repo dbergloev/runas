@@ -56,10 +56,11 @@ pub const PROMPT_TEXT: &'static str = "Password: ";
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
     pub struct RunFlags: u32 {
-        const NONE = 0x00;
-        const SHELL = 0x01;
-        const AUTH_STDIN = 0x20;
-        const AUTH_NO_PROMPT = 0x40;
+        const NONE = 0x00;              // No flags
+        const SHELL = 0x01;             // Process should launch a shell
+        const AUTH_STDIN = 0x20;        // Read password from stdin
+        const AUTH_NO_PROMPT = 0x40;    // Do not launch a prompt for this process
+        const PROMPT_HIDE = 0x80;       // Prompt should not display what is being typed
     }
 }
 

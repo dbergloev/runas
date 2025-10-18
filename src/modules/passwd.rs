@@ -145,17 +145,19 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
             output = fd;
         }
         
-        if let Ok(settings) = tcgetattr(input) {
-            // Disable terminal ECHO mode
-            let mut new_settings: Termios = settings.clone();
-            
-            term_flags = new_settings.local_flags;
-            new_settings.local_flags &= !(LocalFlags::ICANON | LocalFlags::ECHO);
+        if (flags & RunFlags::PROMPT_HIDE) != RunFlags::NONE {
+            if let Ok(settings) = tcgetattr(input) {
+                // Disable terminal ECHO mode
+                let mut new_settings: Termios = settings.clone();
+                
+                term_flags = new_settings.local_flags;
+                new_settings.local_flags &= !(LocalFlags::ICANON | LocalFlags::ECHO);
 
-            tcsetattr(input, SetArg::TCSANOW, &new_settings).unwrap_or_else(|e| { errx!(1, "ask_password: {}\n\t{}", MSG_IO_TTY_ATTR, e); });
-        
-        } else {
-            errx!(1, MSG_IO_TTY_ATTR);
+                tcsetattr(input, SetArg::TCSANOW, &new_settings).unwrap_or_else(|e| { errx!(1, "ask_password: {}\n\t{}", MSG_IO_TTY_ATTR, e); });
+            
+            } else {
+                errx!(1, MSG_IO_TTY_ATTR);
+            }
         }
         
         write(output, msg.as_bytes()).unwrap_or_else(|e| { errx!(1, "ask_password: {}\n\t{}", MSG_IO_TTY_ATTR, e); });
@@ -173,21 +175,28 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
     // Begin reading the password into the buffer
     while let Ok(rc) = read(input, &mut ch) {
         if rc == 1 && ch[0] != b'\r' && ch[0] != b'\n' {
-            if ch[0] == 127 || ch[0] == 8 {
-                // Handle backspace
-                if i != 0 {
-                    i -= 1;
-                    write(output, b"\x08 \x08").ok();
-                }
-            
-            } else {
-                buffer.insert(i, ch[0]);
-                i += 1;
-
-                if (flags & RunFlags::AUTH_STDIN) == RunFlags::NONE {
+            if (flags & RunFlags::AUTH_STDIN) == RunFlags::NONE 
+                    && (flags & RunFlags::PROMPT_HIDE) != RunFlags::NONE {
+                    
+                if ch[0] == 127 || ch[0] == 8 {
+                    // Handle backspace
+                    if i != 0 {
+                        i -= 1;
+                        write(output, b"\x08 \x08").ok();
+                    }
+                    
+                    continue;
+                
+                } else {
+                    buffer.insert(i, ch[0]);
                     write(output, b"*").ok();
                 }
+                
+            } else {
+                buffer.push(ch[0]);
             }
+            
+            i += 1;
         
         } else {
             break;
@@ -195,7 +204,9 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
     }
     
     // Reset the terminal/input
-    if (flags & RunFlags::AUTH_STDIN) == RunFlags::NONE {
+    if (flags & RunFlags::AUTH_STDIN) == RunFlags::NONE 
+            && (flags & RunFlags::PROMPT_HIDE) != RunFlags::NONE {
+    
         write(output, b"\n").ok();
         
         // Reset ECHO mode back to default settings
@@ -214,7 +225,7 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
             tcsetattr(input, SetArg::TCSANOW, &new_settings).ok();
         }
         
-    } else {
+    } else if (flags & RunFlags::AUTH_STDIN) != RunFlags::NONE {
         // Re-enable blocking mode in input
         fcntl(input, FcntlArg::F_SETFL(OFlag::from_bits_truncate(flags_fcntl))).ok();
     }
@@ -229,8 +240,10 @@ pub fn ask_password(msg: &str, flags: RunFlags) -> String {
         }
     };
  
-    buffer.zeroize();
-    ch[0] = b'\0';
+    if (flags & RunFlags::PROMPT_HIDE) != RunFlags::NONE {
+        buffer.zeroize();
+        ch[0] = b'\0';
+    }
     
     result
 }

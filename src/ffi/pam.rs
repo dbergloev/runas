@@ -197,11 +197,14 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
             PAM_PROMPT_ECHO_ON |
             PAM_PROMPT_ECHO_OFF => {
             
-                let style = if reqest.msg_style as u32 == PAM_PROMPT_ECHO_ON {
+                let style = if reqest.msg_style as u32 == PAM_PROMPT_ECHO_ON
+                        && !msg.to_lowercase().contains("password") {
                     CONV::ECHO_ON
                 } else {
                     CONV::ECHO_OFF
                 };
+                
+                let zero_out = style == CONV::ECHO_OFF;
             
                 if let Ok(ret) = callback.prompt(msg, style) {
                     // Consume into bytes
@@ -220,8 +223,10 @@ unsafe extern "C" fn pam_conv_wrap<T: PamConv>(
                     }
                     
                     // Clear original data
-                    bytes.zeroize();
-                    drop(bytes);
+                    if zero_out {
+                        bytes.zeroize();
+                        drop(bytes);
+                    }
                     
                     // PAM will free this later
                     reply.resp = dup_ptr as *mut c_char;
