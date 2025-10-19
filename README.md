@@ -95,6 +95,8 @@ When compiled with the `use_pam` feature and using the native executor:
 
 PAM allows flexible integrations (including optional timestamping via PAM modules) without adding complexity to `runas` itself. If you need PAM-based session or timestamp behavior, configure it in your PAM stack.
 
+ > NOTE: You need to add a PAM configuration file, e.g. `/etc/pam.d/runas` in order for PAM authentication to behave correctly. These are very distro dependent and it's not possible or safe to make a universal one. You need one that is tailored to the way existing PAM configurations are setup on your specific OS installation.
+
 ## Limitations
 
 - No `/etc/sudoers`/`/etc/doas.conf` equivalent — there is no policy parser.
