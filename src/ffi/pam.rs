@@ -83,6 +83,7 @@ mod c_ffi {
                             pam_conversation: *const pam_conv, pamh: *mut *mut super::pam_handle_t) -> c_int;
                             
         pub fn pam_authenticate(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
+        pub fn pam_chauthtok(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
         pub fn pam_acct_mgmt(pamh: *mut pam_handle_t, flags: c_int) -> c_int;
         pub fn pam_end(pamh: *mut pam_handle_t, pam_status: c_int) -> c_int;
         pub fn pam_getenvlist(pamh: *mut pam_handle_t) -> *mut *mut c_char;
@@ -301,6 +302,18 @@ impl PamHandle {
     pub fn acct_mgmt(&self, flags: u32) -> u32 {
         unsafe {
             self.result.set(c_ffi::pam_acct_mgmt(self.handle, flags as c_int) as u32);
+        }
+        
+        self.result.get()
+    }
+    
+    /**
+     *
+     */
+    #[allow(unused)]
+    pub fn chauthtok(&self, flags: u32) -> u32 {
+        unsafe {
+            self.result.set(c_ffi::pam_chauthtok(self.handle, flags as c_int) as u32);
         }
         
         self.result.get()

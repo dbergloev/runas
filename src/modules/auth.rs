@@ -108,6 +108,8 @@ mod feat {
     
     use crate::ffi::pam::{
         PAM_SUCCESS,
+        PAM_NEW_AUTHTOK_REQD,
+        PAM_CHANGE_EXPIRED_AUTHTOK
     };
     
     cfg_if! {
@@ -217,6 +219,12 @@ mod feat {
                         if !disable_auth {
                             if result == PAM_SUCCESS {
                                 result = handle.acct_mgmt(0);
+                                
+                                if result == PAM_NEW_AUTHTOK_REQD
+                                        && (flags & RunFlags::AUTH_NO_PROMPT) == RunFlags::NONE {
+                                    
+                                    result = handle.chauthtok(PAM_CHANGE_EXPIRED_AUTHTOK);
+                                }
                             }
                             
                             if result == PAM_SUCCESS {
@@ -261,6 +269,12 @@ mod feat {
                         
                         if result == PAM_SUCCESS {
                             result = handle.acct_mgmt(0);
+                            
+                            if result == PAM_NEW_AUTHTOK_REQD
+                                    && (flags & RunFlags::AUTH_NO_PROMPT) == RunFlags::NONE {
+                                
+                                result = handle.chauthtok(PAM_CHANGE_EXPIRED_AUTHTOK);
+                            }
                         }
                     
                         result
