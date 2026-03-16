@@ -66,19 +66,19 @@ bitflags! {
 
 #[macro_export]
 macro_rules! errx {
-    ($x:expr) => {
+    ($x:expr) => {{
         std::process::exit($x);
-    };
+    }};
     
-    ($x:expr, $y:expr) => {
+    ($x:expr, $y:expr) => {{
         eprintln!("{}", $y);
         std::process::exit($x);
-    };
+    }};
 
-    ($x:expr, $y:expr, $($z:expr),+) => {
+    ($x:expr, $y:expr, $($z:expr),+) => {{
         eprintln!($y, $($z),+);
         std::process::exit($x);
-    };
+    }};
 }
 
 #[cfg_attr(debug_assertions, track_caller)]
