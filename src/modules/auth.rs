@@ -199,18 +199,22 @@ mod feat {
                         let mut result = PAM_SUCCESS;
                         let fd: i32 = std::io::stdin().as_raw_fd();
                         
-                        if !disable_auth {
-                            result = handle.authenticate(0);
+                        if let Ok(status) = isatty(fd) {
+                            if let Ok(tty_path) = ttyname(fd) {
+                                let tty: Cow<'_, str> = tty_path.as_os_str().to_string_lossy();
+                                let _ = handle.set_item(PAM_TTY, &tty);
+                                
+                            } else {
+                                let _ = handle.set_item(PAM_TTY, "/runas");
+                            }
+                            
+                        } else {
+                            let _ = handle.set_item(PAM_TTY, "/runas");
                         }
                         
-                        if let Ok(status) = isatty(fd) && status {
-                            if let Ok(tty_path) = ttyname(fd) {
-                                let tty_os: Cow<'_, str> = tty_path.as_os_str().to_string_lossy();
-                                let tty: &str = tty_os.strip_prefix("/dev/").unwrap_or(&tty_os);
-                               
-                                result = handle.set_item(PAM_TTY, tty);
-                            }
-                        }
+                        if !disable_auth {
+                            result = handle.authenticate(0);
+                        }      
                         
                         if result == PAM_SUCCESS {
                             result = handle.set_item(PAM_RUSER, user.name());
