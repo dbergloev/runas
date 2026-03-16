@@ -36,7 +36,11 @@ cfg_if! {
         use nix::libc::gid_t;
         use std::os::unix::ffi::OsStrExt;
         use std::time::Duration;
-        use std::thread;
+
+        use std::{
+            thread,
+            env
+        };
         
         use std::os::raw::{
             c_char,
@@ -234,7 +238,8 @@ pub fn exec(
     #[cfg(feature = "backend_scopex")] target: &Account, 
     cmd: &CString, 
     argv: &[CString], 
-    #[cfg(feature = "backend_scopex")] envp: &[CString]
+    #[cfg(feature = "backend_scopex")] envp: &[CString],
+    #[cfg(feature = "backend_scopex")] cwd: &Option<String>
 ) {
 
     cfg_if! {
@@ -266,6 +271,12 @@ pub fn exec(
             
             } else if !setresuid(target_uid, target_uid, user_uid).is_ok() {
                 errx!(1, "Failed to set target user");
+            }
+            
+            if let Some(d) = cwd {
+                if let Err(e) = env::set_current_dir(d) {
+                    errx!(1, e);
+                }
             }
             
             execve(&cmd_path, argv, envp).expect("Failed to spawn process");

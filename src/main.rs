@@ -103,8 +103,9 @@ const OPT_STDIN    : CliOption  =  CliOption { flag: "S",   name: "stdin",      
 const OPT_VERSION  : CliOption  =  CliOption { flag: "v",   name: "version",         desc: "Display version information and exit",              val: EMPTY   };
 const OPT_ENV      : CliOption  =  CliOption { flag: EMPTY, name: "env",             desc: "Set environment variable",                          val: "ENV"   };
 const OPT_PRESERVE : CliOption  =  CliOption { flag: EMPTY, name: "preserve-env",    desc: "Comma separated list of variables to preserve",     val: "LIST"  };
+const OPT_CHDIR    : CliOption  =  CliOption { flag: "D",   name: "chdir",           desc: "Run the command in the specified directory",        val: "PATH"  };
 
-const ARGV_SCHEME: &[CliOption] = &[OPT_USER, OPT_GROUP, OPT_SHELL, OPT_HELP, OPT_NONINT, OPT_STDIN, OPT_VERSION, OPT_ENV, OPT_PRESERVE];
+const ARGV_SCHEME: &[CliOption] = &[OPT_USER, OPT_GROUP, OPT_SHELL, OPT_HELP, OPT_NONINT, OPT_STDIN, OPT_VERSION, OPT_ENV, OPT_PRESERVE, OPT_CHDIR];
 
 /**
  * Prints the usage/help text based on the current command-line schema.
@@ -284,8 +285,9 @@ pub fn build_environment(
 fn main() {
     cfg_if! {
         if #[cfg(feature = "backend_scopex")] {
-            let mut envp:     Vec<CString> = vec![cstring!("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")];
-            let mut argv_out               = Vec::new();
+            let mut envp:     Vec<CString>   = vec![cstring!("/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")];
+            let mut argv_out                 = Vec::new();
+            let mut chdir:    Option<String> = None;
             
         } else {
             let mut argv_out: Vec<CString> = get_argv();
@@ -433,6 +435,26 @@ fn main() {
                     }
                 }
                 
+                OPT_CHDIR => {
+                    let cli_value: String = argv_parsed.opt_str(cli_opt.name).unwrap_or_else(|| {
+                        errx!(1, "No path was defined for working directory");
+                    });
+                    
+                    cfg_if! {
+                        if #[cfg(feature = "backend_run0")] {
+                            argv_out.push(cstring!("--chdir"));
+                            argv_out.push(cstring!(cli_value));
+                            
+                        } else if #[cfg(not(feature = "backend_scopex"))] {    
+                            argv_out.push(cstring!("--working-directory"));
+                            argv_out.push(cstring!(cli_value));
+                            
+                        } else {
+                            chdir = Some(cli_value);
+                        }
+                    }
+                }
+                
                 OPT_SHELL => flags |= RunFlags::SHELL,
                 OPT_STDIN => flags |= RunFlags::AUTH_STDIN,
                 OPT_NONINT => flags |= RunFlags::AUTH_NO_PROMPT,
@@ -477,6 +499,18 @@ fn main() {
         }
     };
     
+    #[cfg(feature = "backend_run0")]
+    if !argv_out.iter().any(|arg| arg.to_str() == Ok("--chdir")) {
+        let path: Result<PathBuf, _> = env::current_dir();
+    
+        if let Ok(cwd) = path {
+            argv_out.push(cstring!("--chdir"));
+            argv_out.push(cstring!(
+                cwd.as_os_str().as_bytes()
+            ));
+        }
+    }
+    
     // Do some last systemd-run configuration
     if (flags & RunFlags::SHELL) != RunFlags::NONE {
         if argv_parsed.free.len() > 0 {
@@ -487,17 +521,7 @@ fn main() {
         }
 
         cfg_if! {
-            if #[cfg(feature = "backend_run0")] {
-                let path: Result<PathBuf, _> = env::current_dir();
-            
-                if let Ok(cwd) = path {
-                    argv_out.push(cstring!("--chdir"));
-                    argv_out.push(cstring!(
-                        cwd.as_os_str().as_bytes()
-                    ));
-                }
-                
-            } else if #[cfg(feature = "backend_scopex")] {    
+            if #[cfg(feature = "backend_scopex")] {    
                 argv_out.push(
                     cstring!(&*target_shell)
                 );
@@ -506,7 +530,7 @@ fn main() {
                     cstring!("-{}", &*target_shell)
                 );
                 
-            } else {
+            } else if #[cfg(not(feature = "backend_run0"))] {
                 argv_out.push(cstring!("--shell"));
                 argv_out.push(cstring!("--scope"));
             }
@@ -592,7 +616,7 @@ fn main() {
                 load_env_override(target.name(), &mut envp);
             
                 // Launch the process
-                exec(&user, &target, &argv_out[0], &argv_out[1..], &envp);
+                exec(&user, &target, &argv_out[0], &argv_out[1..], &envp, &chdir);
             
             } else {
                 // Load override variables
