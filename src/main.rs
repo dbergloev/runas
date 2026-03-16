@@ -70,6 +70,11 @@ use getopts::{
 
 #[cfg(not(feature = "backend_scopex"))]
     use atty::Stream;
+    use std::fs::File;
+    use std::io::{
+        BufRead, 
+        BufReader
+    };
 
 cfg_if! {
     if #[cfg(feature = "backend_run0")] {
@@ -160,6 +165,64 @@ fn get_argv() -> Vec<std::ffi::CString> {
     }
 
     return argv;
+}
+
+/**
+ * Add or override environment variables from the file '/etc/runas.env'. 
+ *
+ * The structure of the file is as follows:
+ *      USER NAME=VALUE
+ *
+ * This will set the environment NAME=VALUE when target user matches USER. 
+ * Multiple variables can be set for multiple users, one variable per line.
+ */
+fn load_env_override(target_name: &str, envp: &mut Vec<CString>) {
+    let file = match File::open("/etc/runas.env") {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => errx!(1, e)
+    };
+    
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(e) => errx!(1, e)
+        };
+        
+        let line = line.trim();
+        
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let mut parts = line.splitn(2, char::is_whitespace);
+
+        let name = match parts.next() {
+            Some(v) => v,
+            None => continue,
+        };
+        
+        if name != target_name {
+            continue;
+        }
+        
+        let val = match parts.next() {
+            Some(v) => v.trim_start(),
+            None => continue,
+        };
+        
+        cfg_if! {
+            if #[cfg(not(feature = "backend_scopex"))] {
+                envp.push(cstring!("--setenv"));
+            }
+        }
+        
+        envp.push(
+            cstring!(&*val)
+        );
+    }
 }
 
 /** 
@@ -515,6 +578,7 @@ fn main() {
             if #[cfg(feature = "backend_scopex")] {
                 let pam_envp: Vec<String> = result.unwrap();
             
+                // Build environment
                 build_environment(
                     &mut envp,
                     &pam_envp,
@@ -523,10 +587,18 @@ fn main() {
                     target.name(),
                     target.home()
                 );
+                
+                // Load override variables
+                load_env_override(target.name(), &mut envp);
             
+                // Launch the process
                 exec(&user, &target, &argv_out[0], &argv_out[1..], &envp);
             
             } else {
+                // Load override variables
+                load_env_override(target.name(), &mut argv_out);
+                
+                // Launch Systemd
                 exec(&user, &argv_out[0], &argv_out);
             }
         }
