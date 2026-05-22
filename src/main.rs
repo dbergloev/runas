@@ -192,8 +192,36 @@ fn load_env_override(
     let file = match File::open("/etc/runas.env") {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
-        Err(e) => errx!(1, e)
+        Err(e) => {
+            eprintln!("runas: failed to open /etc/runas.env: {e}");
+            return;
+        }
     };
+    
+    // Validate permissions/ownership
+    {
+        use std::os::unix::fs::MetadataExt;
+
+        let meta = match file.metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("runas: failed to stat /etc/runas.env: {e}");
+                return;
+            }
+        };
+
+        // Must be owned by root
+        if meta.uid() != 0 {
+            eprintln!("runas: ignoring /etc/runas.env (not owned by root)");
+            return;
+        }
+
+        // Must not be group/world writable
+        if meta.mode() & 0o022 != 0 {
+            eprintln!("runas: ignoring /etc/runas.env (writable by group or others)");
+            return;
+        }
+    }
     
     let reader = BufReader::new(file);
 
@@ -225,12 +253,38 @@ fn load_env_override(
             None => continue,
         };
         
-        let val = val
+        // Validate VAR=VALUE format
+        let (key, value) = match val.split_once('=') {
+            Some((k, v)) => (k.trim(), v.trim()),
+            None => continue,
+        };
+
+        // Validate environment variable name
+        if key.is_empty() {
+            continue;
+        }
+
+        if !key.bytes().enumerate().all(|(i, b)| {
+            match b {
+                b'A'..=b'Z' |
+                b'a'..=b'z' |
+                b'_' => true,
+
+                b'0'..=b'9' => i != 0,
+
+                _ => false
+            }
+        }) {
+            continue;
+        }
+        
+        // Expand placeholders
+        let value = value
             .replace("${USER}", target_name)
             .replace("${UID}", &target_uid.as_raw().to_string())
             .replace("${GROUP}", target_group)
             .replace("${GID}", &target_gid.as_raw().to_string());
-        
+
         cfg_if! {
             if #[cfg(not(feature = "backend_scopex"))] {
                 envp.push(cstring!("--setenv"));
@@ -238,7 +292,7 @@ fn load_env_override(
         }
         
         envp.push(
-            cstring!(&*val)
+            cstring!("{}={}", key, value)
         );
     }
 }
