@@ -53,6 +53,11 @@ use runas::modules::proc::exec;
 use std::env;
 use std::ffi::CString;
 
+use nix::unistd::{
+    Uid,
+    Gid
+};
+
 use runas::modules::auth::{
     authenticate,
     AuthType
@@ -177,7 +182,13 @@ fn get_argv() -> Vec<std::ffi::CString> {
  * This will set the environment NAME=VALUE when target user matches USER. 
  * Multiple variables can be set for multiple users, one variable per line.
  */
-fn load_env_override(target_name: &str, envp: &mut Vec<CString>) {
+fn load_env_override(
+    target_name: &str,
+    target_uid: Uid,
+    target_group: &str,
+    target_gid: Gid,
+    envp: &mut Vec<CString>
+) {
     let file = match File::open("/etc/runas.env") {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
@@ -213,6 +224,12 @@ fn load_env_override(target_name: &str, envp: &mut Vec<CString>) {
             Some(v) => v.trim_start(),
             None => continue,
         };
+        
+        let val = val
+            .replace("${USER}", target_name)
+            .replace("${UID}", &target_uid.as_raw().to_string())
+            .replace("${GROUP}", target_group)
+            .replace("${GID}", &target_gid.as_raw().to_string());
         
         cfg_if! {
             if #[cfg(not(feature = "backend_scopex"))] {
@@ -613,14 +630,26 @@ fn main() {
                 );
                 
                 // Load override variables
-                load_env_override(target.name(), &mut envp);
+                load_env_override(
+                    target.name(),
+                    target.uid(),
+                    target.group().name(),
+                    target.gid(),
+                    &mut envp
+                );
             
                 // Launch the process
                 exec(&user, &target, &argv_out[0], &argv_out[1..], &envp, &chdir);
             
             } else {
                 // Load override variables
-                load_env_override(target.name(), &mut argv_out);
+                load_env_override(
+                    target.name(),
+                    target.uid(),
+                    target.group().name(),
+                    target.gid(),
+                    &mut argv_out
+                );
                 
                 // Launch Systemd
                 exec(&user, &argv_out[0], &argv_out);
