@@ -205,7 +205,7 @@ fn load_env_override(target_name: &str, envp: &mut Vec<CString>) {
             None => continue,
         };
         
-        if name != target_name {
+        if name != "*" && name != target_name {
             continue;
         }
         
