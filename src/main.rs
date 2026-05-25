@@ -52,6 +52,12 @@ use runas::shared::*;
 use runas::modules::proc::exec;
 use std::env;
 use std::ffi::CString;
+use std::fs::File;
+
+use std::io::{
+    BufRead, 
+    BufReader
+};
 
 use nix::unistd::{
     Uid,
@@ -74,12 +80,7 @@ use getopts::{
 };
 
 #[cfg(not(feature = "backend_scopex"))]
-    use atty::Stream;
-    use std::fs::File;
-    use std::io::{
-        BufRead, 
-        BufReader
-    };
+use atty::Stream;
 
 cfg_if! {
     if #[cfg(feature = "backend_run0")] {
