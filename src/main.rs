@@ -383,6 +383,25 @@ fn main() {
         }
     };
     
+    let shell = argv_parsed.opt_present("s");
+    let help  = argv_parsed.opt_present("h");
+    let ver   = argv_parsed.opt_present("v");
+
+    let special_count =
+        shell as u8 +
+        help as u8 +
+        ver as u8;
+        
+    if special_count > 1 {
+        errx!(1, "Options -s, -h and -v are mutually exclusive");
+        
+    } else if (help || ver || shell) && !argv_parsed.free.is_empty() {
+        errx!(1, "This option does not accept command arguments");
+        
+    } else if !shell && !help && !ver && argv_parsed.free.is_empty() {
+        errx!(1, "No command specified");
+    }
+    
     // Define environment variables to preserve
     #[cfg(feature = "backend_scopex")]
     let preserve: Vec<&str> = vec![
@@ -402,7 +421,7 @@ fn main() {
                     print_usage(&argv_in[0], &argv_opt);
                     return;
                 }
-            
+                
                 OPT_USER => {
                     let cli_value: String = argv_parsed.opt_str(cli_opt.name).unwrap_or_else(|| {
                         errx!(1, "User was not suplied");
