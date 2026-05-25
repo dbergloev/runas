@@ -151,26 +151,30 @@ fn get_argv_options() -> Options {
  */
 #[cfg(not(feature = "backend_scopex"))]
 fn get_argv() -> Vec<std::ffi::CString> {
+    let mut argv = vec![
+        cstring!("systemd-run")
+    ];
+
     cfg_if! {
         if #[cfg(feature = "backend_run0")] {
-            let argv = vec![
+            argv.extend([
                 cstring!("run0"),
                 cstring!("--user"), cstring!(EMPTY),      // MUST be in this order
                 cstring!("--shell-prompt-prefix="),    // Remove the stupid SuperUser icon
                 cstring!("--background=")              // Remove the annoying red background
-            ];
-        
+            ]);
         } else {
-            let argv = vec![
+            argv.extend([
                 cstring!("systemd-run"),
                 cstring!("--uid"), cstring!(EMPTY), // MUST be in this order
                 cstring!("--quiet"),
                 cstring!("-G"),
                 cstring!("--send-sighup"),
                 cstring!("--same-dir"),
+                
                 #[cfg(not(feature = "without_expand_env"))]
                 cstring!("--expand-environment=false")
-            ];
+            ]);
         }
     }
 
@@ -693,7 +697,7 @@ fn main() {
     // Set the uid that systemd-run should use
     cfg_if! {
         if #[cfg(not(feature = "backend_scopex"))] {
-            argv_out[2] = cstring!(target.uid().to_string());
+            argv_out[3] = cstring!(target.uid().to_string());
         }
     }
     
@@ -738,7 +742,7 @@ fn main() {
                 );
                 
                 // Launch Systemd
-                exec(&user, &argv_out[0], &argv_out);
+                exec(&user, &argv_out[0], &argv_out[1..]);
             }
         }
         
