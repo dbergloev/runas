@@ -85,6 +85,9 @@ cfg_if! {
     if #[cfg(feature = "backend_run0")] {
         use std::os::unix::ffi::OsStrExt;
         use std::path::PathBuf;
+        
+    } else if #[cfg(feature = "backend_scopex")] {
+        use std::path::Path;
     }
 }
 
@@ -593,12 +596,21 @@ fn main() {
 
         cfg_if! {
             if #[cfg(feature = "backend_scopex")] {    
+                // We only want the name, so make a login shell, e.g. 
+                //      /bin/bash      -> -bash
+                //      /usr/bin/zsh   -> -zsh
+                //      /bin/sh        -> -sh
+                let shell_name = Path::new(&*target_shell)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy();
+                    
                 argv_out.push(
                     cstring!(&*target_shell)
                 );
-                
+
                 argv_out.push(
-                    cstring!("-{}", &*target_shell)
+                    cstring!("-{}", shell_name)
                 );
                 
             } else if #[cfg(not(feature = "backend_run0"))] {
